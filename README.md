@@ -1,0 +1,1 @@
+# forex_spread_trading
