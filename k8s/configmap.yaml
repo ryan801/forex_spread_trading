@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forex-bot-config
+  labels:
+    app: forex-pairs-bot
+data:
+  # Polling interval in seconds - how often to check prices
+  POLL_INTERVAL: "60"
+  
+  # Number of periods for moving average/std dev calculation
+  LOOKBACK_PERIODS: "20"
+  
+  # Z-score threshold to enter a trade
+  ENTRY_Z_SCORE: "2.0"
+  
+  # Z-score threshold to exit (close to mean)
+  EXIT_Z_SCORE: "0.5"
+  
+  # Units per leg of the spread trade
+  TRADE_UNITS: "1000"
+  
+  # Candle granularity for historical data (S5, M1, M5, M15, H1, H4, D, W, M)
+  GRANULARITY: "H1"
+  
+  # Set to "false" to execute real trades (BE CAREFUL)
+  DRY_RUN: "true"

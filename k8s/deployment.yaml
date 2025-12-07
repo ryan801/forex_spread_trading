@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forex-pairs-bot
+  labels:
+    app: forex-pairs-bot
+spec:
+  replicas: 1  # Only run ONE instance - we don't want duplicate trades!
+  selector:
+    matchLabels:
+      app: forex-pairs-bot
+  template:
+    metadata:
+      labels:
+        app: forex-pairs-bot
+    spec:
+      containers:
+        - name: bot
+          # You'll need to update this to your actual image location
+          # after building and pushing to a registry
+          image: forex-pairs-bot:latest
+          imagePullPolicy: Always
+          
+          # Load config from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: forex-bot-config
+          
+          # Load secrets separately
+          env:
+            - name: OANDA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: oanda-credentials
+                  key: OANDA_API_KEY
+            - name: OANDA_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oanda-credentials
+                  key: OANDA_ACCOUNT_ID
+          
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          
+          # Liveness probe - restart if bot becomes unresponsive
+          # (We'd need to add a health endpoint for this to work properly)
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 8080
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 60
+      
+      # Ensure graceful shutdown
+      terminationGracePeriodSeconds: 30
+      
+      # Don't restart too quickly on failure
+      restartPolicy: Always
