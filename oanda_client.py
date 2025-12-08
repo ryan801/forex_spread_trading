@@ -5,7 +5,6 @@ Handles authentication, price fetching, and order execution
 
 import os
 import requests
-from datetime import datetime
 from typing import Optional
 
 

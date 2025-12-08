@@ -4,8 +4,7 @@ Calculates ratios and z-scores for currency pair spreads
 """
 
 import numpy as np
-import pandas as pd
-from typing import Optional, Tuple
+from typing import Tuple
 from dataclasses import dataclass
 from datetime import datetime
 

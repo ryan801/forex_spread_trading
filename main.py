@@ -53,7 +53,7 @@ class TradingBot:
                 exit_z=EXIT_Z_SCORE
             )
         
-        print(f"[INIT] Bot initialized")
+        print("[INIT] Bot initialized")
         print(f"[INIT] Tracking spreads: {[f'{p1}/{p2}' for p1, p2 in SPREADS]}")
         print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
@@ -131,7 +131,7 @@ class TradingBot:
         print(f"[TRADE] {signal.pair2}: {pair2_units:+d} units")
         
         if DRY_RUN:
-            print(f"[TRADE] DRY RUN - No actual orders placed")
+            print("[TRADE] DRY RUN - No actual orders placed")
             success = True
         else:
             # Execute the trades
@@ -143,7 +143,7 @@ class TradingBot:
                 print(f"[TRADE] {signal.pair1} filled at {result1['price']}")
                 print(f"[TRADE] {signal.pair2} filled at {result2['price']}")
             else:
-                print(f"[TRADE] Order execution failed!")
+                print("[TRADE] Order execution failed!")
         
         # Update position tracking
         if success:
@@ -216,9 +216,9 @@ class TradingBot:
         self.print_status(prices, signals)
         
         # Act on signals
-        for signal in signals:
-            if signal.signal in ['LONG_SPREAD', 'SHORT_SPREAD', 'CLOSE']:
-                self.execute_spread_trade(signal)
+        for sig in signals:
+            if sig.signal in ['LONG_SPREAD', 'SHORT_SPREAD', 'CLOSE']:
+                self.execute_spread_trade(sig)
     
     def run(self) -> None:
         """Main bot loop"""
