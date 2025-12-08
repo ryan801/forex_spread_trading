@@ -18,7 +18,7 @@ spec:
         - name: bot
           # You'll need to update this to your actual image location
           # after building and pushing to a registry
-          image: forex-pairs-bot:latest
+          image: ghcr.io/ryan801/forex_spread_trading
           imagePullPolicy: Always
           
           # Load config from ConfigMap
