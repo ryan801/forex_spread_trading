@@ -12,6 +12,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       IMAGE_BASE: ghcr.io/ryan801/forex_spread_trading
 
@@ -32,23 +33,27 @@ jobs:
           SHA="$(git rev-parse --short HEAD)"
           VERSION_TAG="${TS}-${SHA}"
 
+          echo "Building image tag: ${VERSION_TAG}"
+
           docker build -f Containerfile -t "${IMAGE_BASE}:latest" .
           docker tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${VERSION_TAG}"
 
           docker push "${IMAGE_BASE}:latest"
           docker push "${IMAGE_BASE}:${VERSION_TAG}"
 
-      - name: Install oc CLI op
+      - name: Install oc CLI
         uses: redhat-actions/oc-installer@v1
         with:
           oc_version: 'latest'
+
+      - name: Show oc version (debug)
+        run: oc version --client
 
       - name: Login to OpenShift
         run: |
           oc login "${{ secrets.OCP_API_URL }}" \
             --token="${{ secrets.OCP_TOKEN }}" \
             --insecure-skip-tls-verify=true
-
 
       - name: Apply manifests and restart deployment
         run: |
