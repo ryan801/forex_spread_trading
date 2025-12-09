@@ -32,7 +32,7 @@ jobs:
           SHA="$(git rev-parse --short HEAD)"
           VERSION_TAG="${TS}-${SHA}"
 
-          docker build -t "${IMAGE_BASE}:latest" .
+          docker build -f Containerfile -t "${IMAGE_BASE}:latest" .
           docker tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${VERSION_TAG}"
 
           docker push "${IMAGE_BASE}:latest"
