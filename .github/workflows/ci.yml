@@ -44,7 +44,6 @@ jobs:
           oc_version: 'latest'
 
       - name: Login to OpenShift
-        uses: redhat-actions/oc-login@v1
         run: |
           oc login "${{ secrets.OCP_API_URL }}" \
             --token="${{ secrets.OCP_TOKEN }}" \
