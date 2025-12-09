@@ -1,30 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: forex-pairs-bot
+  name: forex-spread-trading
   labels:
-    app: forex-pairs-bot
+    app: forex-spread-trading
 spec:
   replicas: 1  # Only run ONE instance - we don't want duplicate trades!
   selector:
     matchLabels:
-      app: forex-pairs-bot
+      app: forex-spread-trading
   template:
     metadata:
       labels:
-        app: forex-pairs-bot
+        app: forex-spread-trading
     spec:
       containers:
-        - name: bot
+        - name: forex-spread-trading
           # You'll need to update this to your actual image location
           # after building and pushing to a registry
-          image: ghcr.io/ryan801/forex_spread_trading
+          image: ghcr.io/ryan801/forex_spread_trading:latest
           imagePullPolicy: Always
           
           # Load config from ConfigMap
           envFrom:
             - configMapRef:
-                name: forex-bot-config
+                name: forex-spread-trading-cm
           
           # Load secrets separately
           env:
@@ -38,7 +38,20 @@ spec:
                 secretKeyRef:
                   name: oanda-credentials
                   key: OANDA_ACCOUNT_ID
-          
+          readinessProbe:
+            exec:
+              command: ["bash", "-c", "pgrep -f 'forex_spread_trading' || pgrep -f 'main.py'"]
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+
+          livenessProbe:
+            exec:
+              command: ["bash", "-c", "pgrep -f 'forex_spread_trading' || pgrep -f 'main.py'"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            failureThreshold: 5
+            
           resources:
             requests:
               memory: "128Mi"
@@ -46,15 +59,8 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+
           
-          # Liveness probe - restart if bot becomes unresponsive
-          # (We'd need to add a health endpoint for this to work properly)
-          # livenessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: 8080
-          #   initialDelaySeconds: 30
-          #   periodSeconds: 60
       
       # Ensure graceful shutdown
       terminationGracePeriodSeconds: 30
