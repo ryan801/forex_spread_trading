@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: forex-bot-config
+  name: forex-spread-trading-cm
   labels:
-    app: forex-pairs-bot
+    app: forex-spread-trading
 data:
   # Polling interval in seconds - how often to check prices
   POLL_INTERVAL: "60"
