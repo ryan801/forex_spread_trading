@@ -1,4 +1,4 @@
-name: Build & (Optional) Deploy Forex Spread Bot
+name: Build & Deploy Forex Spread Bot
 
 on:
   push:
@@ -8,12 +8,11 @@ on:
       - "k8s/**"
       - "Containerfile"
       - ".github/workflows/ci.yml"
-  workflow_dispatch: {} # allow manual dispatch for deploy
 
 jobs:
-  build:
-    name: Build and Push Image
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       IMAGE_BASE: ghcr.io/ryan801/forex_spread_trading
 
@@ -41,17 +40,6 @@ jobs:
 
           docker push "${IMAGE_BASE}:latest"
           docker push "${IMAGE_BASE}:${VERSION_TAG}"
-
-  deploy:
-    name: Deploy to OpenShift (manual)
-    needs: build
-    runs-on: ubuntu-latest
-    # Only run when manually dispatched and required secrets are present
-    if: ${{ github.event_name == 'workflow_dispatch' && secrets.OCP_API_URL != '' && secrets.OCP_TOKEN != '' }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Install oc CLI
         uses: redhat-actions/oc-installer@v1
