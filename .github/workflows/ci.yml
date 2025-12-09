@@ -40,12 +40,15 @@ jobs:
 
       - name: Install oc CLI op
         uses: redhat-actions/oc-installer@v1
+        with:
+          oc_version: 'latest'
+
       - name: Login to OpenShift
         uses: redhat-actions/oc-login@v1
-        with:
-          openshift_server_url: ${{ secrets.OCP_API_URL }}
-          openshift_token: ${{ secrets.OCP_TOKEN }}
-          insecure_skip_tls_verify: true
+        run: |
+          oc login "${{ secrets.OCP_API_URL }}" \
+            --token="${{ secrets.OCP_TOKEN }}" \
+            --insecure-skip-tls-verify=true
 
 
       - name: Apply manifests and restart deployment
