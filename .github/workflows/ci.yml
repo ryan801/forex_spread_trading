@@ -38,6 +38,8 @@ jobs:
           docker push "${IMAGE_BASE}:latest"
           docker push "${IMAGE_BASE}:${VERSION_TAG}"
 
+      - name: Install oc CLI op
+        uses: redhat-actions/oc-installer@v1
       - name: Login to OpenShift
         uses: redhat-actions/oc-login@v1
         with:
