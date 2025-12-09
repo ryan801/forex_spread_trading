@@ -39,10 +39,12 @@ jobs:
           docker push "${IMAGE_BASE}:${VERSION_TAG}"
 
       - name: Login to OpenShift
-        run: |
-          oc login "${{ secrets.OCP_API_URL }}" \
-            --token="${{ secrets.OCP_TOKEN }}" \
-            --insecure-skip-tls-verify=true
+        uses: redhat-actions/oc-login@v1
+        with:
+          openshift_server_url: ${{ secrets.OCP_API_URL }}
+          openshift_token: ${{ secrets.OCP_TOKEN }}
+          insecure_skip_tls_verify: true
+
 
       - name: Apply manifests and restart deployment
         run: |
