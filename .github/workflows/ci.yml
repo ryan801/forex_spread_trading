@@ -22,7 +22,7 @@ jobs:
 
       - name: Login to GHCR
         run: |
-          podman login ghcr.io -u ryan801 -p "${{ secrets.GHCR_PAT }}"
+          sudo podman login ghcr.io -u ryan801 -p "${{ secrets.GHCR_PAT }}"
 
       - name: Build and push image
         run: |
@@ -32,11 +32,11 @@ jobs:
 
           echo "Building image tag: ${VERSION_TAG}"
 
-          podman build -f Containerfile -t "${IMAGE_BASE}:latest" .
-          podman tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${VERSION_TAG}"
+          sudo podman build -f Containerfile -t "${IMAGE_BASE}:latest" .
+          sudo podman tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${VERSION_TAG}"
 
-          podman push "${IMAGE_BASE}:latest"
-          podman push "${IMAGE_BASE}:${VERSION_TAG}"
+          sudo podman push "${IMAGE_BASE}:latest"
+          sudo podman push "${IMAGE_BASE}:${VERSION_TAG}"
       
       - name: Install oc CLI
         uses: redhat-actions/oc-installer@v1
