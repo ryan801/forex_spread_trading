@@ -1,0 +1,34 @@
+name: CI - Build & Push Image
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build-and-push:
+    runs-on: [self-hosted, crc]
+
+    env:
+      IMAGE_BASE: ghcr.io/ryan801/forex_spread_trading
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR (podman)
+        run: |
+          sudo podman login ghcr.io -u ryan801 -p "${{ secrets.GHCR_PAT }}"
+
+      - name: Build & push image (tagged)
+        run: |
+          SHA="${GITHUB_SHA}"
+          SHORT_SHA="${SHA:0:7}"
+
+          echo "Building tags: latest, ${SHORT_SHA}"
+
+          sudo podman build -f Containerfile -t "${IMAGE_BASE}:latest" .
+          sudo podman tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${SHORT_SHA}"
+
+          sudo podman push "${IMAGE_BASE}:latest"
+          sudo podman push "${IMAGE_BASE}:${SHORT_SHA}"

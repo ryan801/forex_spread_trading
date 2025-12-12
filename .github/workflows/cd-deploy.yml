@@ -1,0 +1,58 @@
+name: CD - Deploy to OpenShift (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. 1a2b3c4). Leave blank to use latest."
+        required: false
+        default: ""
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, crc]
+
+    env:
+      IMAGE_BASE: ghcr.io/ryan801/forex_spread_trading
+      NAMESPACE: forex-spread-trading
+      DEPLOYMENT: forex-spread-trading
+      CONTAINER: forex-spread-trading
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install oc CLI
+        uses: redhat-actions/oc-installer@v1
+        with:
+          oc_version: "latest"
+
+      - name: Show oc version (debug)
+        run: oc version --client
+
+      - name: Login to OpenShift
+        run: |
+          oc login "${{ secrets.OCP_API_URL }}" \
+            --token="${{ secrets.OCP_TOKEN }}" \
+            --insecure-skip-tls-verify=true
+
+      - name: Apply manifests (no secrets)
+        run: |
+          oc apply -f k8s/spread-trading-configmap.yaml -n "${NAMESPACE}"
+          oc apply -f k8s/spread-trading-deployment.yaml -n "${NAMESPACE}"
+
+      - name: Set image (tag) and rollout
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "${TAG}" ]; then
+            TAG="latest"
+          fi
+
+          echo "Deploying image tag: ${TAG}"
+
+          oc set image deployment/"${DEPLOYMENT}" \
+            "${CONTAINER}"="${IMAGE_BASE}:${TAG}" \
+            -n "${NAMESPACE}"
+
+          oc rollout restart deployment/"${DEPLOYMENT}" -n "${NAMESPACE}"
+          oc rollout status deployment/"${DEPLOYMENT}" -n "${NAMESPACE}"

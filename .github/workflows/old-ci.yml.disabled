@@ -9,10 +9,6 @@ on:
       - "Containerfile"
       - ".github/workflows/ci.yml"
 
-jobs:
-  build-and-deploy:
-    runs-on: [self-hosted, crc]
-
     env:
       IMAGE_BASE: ghcr.io/ryan801/forex_spread_trading
 
