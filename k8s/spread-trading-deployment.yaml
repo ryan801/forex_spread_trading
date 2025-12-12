@@ -40,17 +40,17 @@ spec:
                   key: OANDA_ACCOUNT_ID
           readinessProbe:
             exec:
-              command: ["bash", "-c", "pgrep -f 'forex_spread_trading' || pgrep -f 'main.py'"]
-            initialDelaySeconds: 20
+              command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
+            initialDelaySeconds: 0
             periodSeconds: 30
-            failureThreshold: 3
+            # failureThreshold: 3
 
           livenessProbe:
             exec:
-              command: ["bash", "-c", "pgrep -f 'forex_spread_trading' || pgrep -f 'main.py'"]
-            initialDelaySeconds: 60
+              command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
+            initialDelaySeconds: 30
             periodSeconds: 60
-            failureThreshold: 5
+            # failureThreshold: 5
             
           resources:
             requests:
