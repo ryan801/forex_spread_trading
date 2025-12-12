@@ -14,6 +14,8 @@ spec:
       labels:
         app: forex-spread-trading
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: forex-spread-trading
           # You'll need to update this to your actual image location

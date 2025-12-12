@@ -36,20 +36,20 @@ jobs:
             --token="${{ secrets.OCP_TOKEN }}" \
             --insecure-skip-tls-verify=true
 
-      # - name: Prechecks
-      #   run: |
-      #     oc project "${NAMESPACE}"
+      - name: Prechecks
+        run: |
+          oc project "${NAMESPACE}"
 
-      #     echo "Check namespace exists:"
-      #     oc get ns "${NAMESPACE}"
+          echo "Check namespace exists:"
+          oc get ns "${NAMESPACE}"
 
-      #     echo "Check required secret exists:"
-      #     oc get secret oanda-credentials -n "${NAMESPACE}"
+          echo "Check required secret exists:"
+          oc get secret oanda-credentials -n "${NAMESPACE}"
 
-      #     echo "Check image tag exists (best effort):"
-      #     TAG="${{ github.event.inputs.image_tag }}"
-      #     if [ -z "${TAG}" ]; then TAG="latest"; fi
-      #     sudo podman manifest inspect "${IMAGE_BASE}:${TAG}" >/dev/null
+          echo "Check image tag exists (best effort):"
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "${TAG}" ]; then TAG="latest"; fi
+          sudo podman manifest inspect "${IMAGE_BASE}:${TAG}" >/dev/null
 
 
       - name: Apply manifests (no secrets)
