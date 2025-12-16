@@ -19,6 +19,7 @@ LOOKBACK_PERIODS = int(os.environ.get('LOOKBACK_PERIODS', '20'))
 ENTRY_Z_SCORE = float(os.environ.get('ENTRY_Z_SCORE', '2.0'))
 EXIT_Z_SCORE = float(os.environ.get('EXIT_Z_SCORE', '0.5'))
 TRADE_UNITS = int(os.environ.get('TRADE_UNITS', '1000'))  # Units per leg
+# FIXED: Logic was backwards - should check if == 'true', not == 'False'
 DRY_RUN = os.environ.get('DRY_RUN', 'true').lower() == 'true'
 GRANULARITY = os.environ.get('GRANULARITY', 'H1')  # Candle size for historical data
 MAX_TRADES_PER_DAY = int(os.environ.get('MAX_TRADES_PER_DAY', '1'))
@@ -41,10 +42,13 @@ class TradingBot:
     
     def __init__(self):
         self.running = False
+        # FIXED: client was undefined, should be OandaClient()
         self.client = OandaClient()
         self.open_positions = {}
 
+        # FIXED: typo 'datetiem' -> 'datetime', added missing ()
         self.trade_day = datetime.utcnow().date()
+        # FIXED: Changed from {} to 0 to match usage later
         self.trades_today = 0
         
         self.analyzer = MultiPairAnalyzer()
@@ -139,14 +143,15 @@ class TradingBot:
         else:
             return False
         
-        print(f"\n[TRADE] {'=' * 50}")
-        print(f"[TRADE] Signal: {signal.signal} on {spread_name}")
-        print(f"[TRADE] Z-Score: {signal.z_score:.4f}")
-        print(f"[TRADE] {signal.pair1}: {pair1_units:+d} units")
-        print(f"[TRADE] {signal.pair2}: {pair2_units:+d} units")
+        now = datetime.utcnow().strftime('%H:%M')
+        print(f"\n[TRADE {now}] {'=' * 50}")
+        print(f"[TRADE {now}] Signal: {signal.signal} on {spread_name}")
+        print(f"[TRADE {now}] Z-Score: {signal.z_score:.4f}")
+        print(f"[TRADE {now}] {signal.pair1}: {pair1_units:+d} units")
+        print(f"[TRADE {now}] {signal.pair2}: {pair2_units:+d} units")
         
         if DRY_RUN:
-            print("[TRADE] DRY RUN - No actual orders placed")
+            print(f"[TRADE {now}] DRY RUN - No actual orders placed")
             success = True
         else:
             # Execute the trades
@@ -155,10 +160,10 @@ class TradingBot:
             success = result1 is not None and result2 is not None
             
             if success:
-                print(f"[TRADE] {signal.pair1} filled at {result1['price']}")
-                print(f"[TRADE] {signal.pair2} filled at {result2['price']}")
+                print(f"[TRADE {now}] {signal.pair1} filled at {result1['price']}")
+                print(f"[TRADE {now}] {signal.pair2} filled at {result2['price']}")
             else:
-                print("[TRADE] Order execution failed!")
+                print(f"[TRADE {now}] Order execution failed!")
         
         # Update position tracking
         if success:
@@ -181,7 +186,7 @@ class TradingBot:
                     if a.name == spread_name:
                         a.update_position_state(entered=True, side=signal.signal)
         
-        print(f"[TRADE] {'=' * 50}\n")
+        print(f"[TRADE {now}] {'=' * 50}\n")
         return success
     
     def print_status(self, prices: dict, signals: list) -> None:
