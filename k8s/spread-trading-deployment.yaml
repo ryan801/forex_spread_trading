@@ -40,19 +40,19 @@ spec:
                 secretKeyRef:
                   name: oanda-credentials
                   key: OANDA_ACCOUNT_ID
-          readinessProbe:
-            exec:
-              command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
-            initialDelaySeconds: 0
-            periodSeconds: 30
-            # failureThreshold: 3
+          # readinessProbe:
+          #   exec:
+          #     command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
+          #   initialDelaySeconds: 0
+          #   periodSeconds: 30
+          #   # failureThreshold: 3
 
-          livenessProbe:
-            exec:
-              command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
-            initialDelaySeconds: 30
-            periodSeconds: 60
-            # failureThreshold: 5
+          # livenessProbe:
+          #   exec:
+          #     command: ["bash", "-c", "ps aux | grep -v grep | grep -q python"]
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 60
+          #   # failureThreshold: 5
             
           resources:
             requests:
