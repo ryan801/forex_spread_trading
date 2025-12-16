@@ -23,5 +23,5 @@ data:
   # Candle granularity for historical data (S5, M1, M5, M15, H1, H4, D, W, M)
   GRANULARITY: "H1"
   
-  # Set to "false" to execute real trades (BE CAREFUL)
+  # Set to "false" to execute real money trades (BE CAREFUL)
   DRY_RUN: "true"

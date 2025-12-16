@@ -21,6 +21,10 @@ EXIT_Z_SCORE = float(os.environ.get('EXIT_Z_SCORE', '0.5'))
 TRADE_UNITS = int(os.environ.get('TRADE_UNITS', '1000'))  # Units per leg
 DRY_RUN = os.environ.get('DRY_RUN', 'true').lower() == 'true'
 GRANULARITY = os.environ.get('GRANULARITY', 'H1')  # Candle size for historical data
+MAX_TRADES_PER_DAY = int(os.environ.get('MAX_TRADES_PER_DAY', '1'))
+MAX_OPEN_POSITIONS = int(os.environ.get('MAX_OPEN_POSITIONS', '1'))
+ALLOW_LIVE_TRADES = os.environ.get('ALLOW_LIVE_TRADES', 'false').lower() == 'true'
+
 
 # Currency pairs we're trading
 INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD']
@@ -38,6 +42,11 @@ class TradingBot:
     def __init__(self):
         self.running = False
         self.client = OandaClient()
+        self.open_positions = {}
+
+        self.trade_day = datetime.utcnow().date()
+        self.trades_today = 0
+        
         self.analyzer = MultiPairAnalyzer()
         
         # Track open spread positions
@@ -58,6 +67,12 @@ class TradingBot:
         print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
     
+    def _roll_trade_day_if_needed(self) -> None:
+        today = datetime.utcnow().date()
+        if today != self.trade_day:
+            self.trade_day = today
+            self.trades_today = 0
+
     def warm_up(self) -> bool:
         """Load historical data to warm up the z-score calculations"""
         print(f"\n[WARMUP] Loading historical data (granularity={GRANULARITY})...")
