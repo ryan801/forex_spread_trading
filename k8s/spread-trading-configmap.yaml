@@ -23,5 +23,12 @@ data:
   # Candle granularity for historical data (S5, M1, M5, M15, H1, H4, D, W, M)
   GRANULARITY: "H1"
   
-  # Set to "false" to execute real money trades (BE CAREFUL)
+  # Set to "true" for paper trading, "false" for REAL trades
   DRY_RUN: "false"
+  
+  # Stop-loss distance in pips (protects positions if bot dies)
+  STOP_LOSS_PIPS: "50"
+  
+  # Close all positions when bot shuts down gracefully (spread_stop, pod restart, etc)
+  # Set to "false" to keep positions open
+  CLOSE_ON_SHUTDOWN: "true"

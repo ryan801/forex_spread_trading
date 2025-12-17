@@ -125,13 +125,14 @@ class OandaClient:
         
         return None
     
-    def place_market_order(self, instrument: str, units: int) -> Optional[dict]:
+    def place_market_order(self, instrument: str, units: int, stop_loss_pips: float = None) -> Optional[dict]:
         """
-        Place a market order
+        Place a market order with optional stop-loss
         
         Args:
             instrument: Currency pair like "EUR_USD"
             units: Positive for buy, negative for sell
+            stop_loss_pips: Optional stop-loss distance in pips
         
         Returns:
             Order response dict or None on error
@@ -147,6 +148,38 @@ class OandaClient:
                 "positionFill": "DEFAULT"
             }
         }
+        
+        # Add stop-loss if specified
+        if stop_loss_pips is not None and stop_loss_pips > 0:
+            # Get current price to calculate stop-loss level
+            price_data = self.get_current_price(instrument)
+            if price_data:
+                current_price = price_data['mid']
+                
+                # Calculate pip value (most pairs are 0.0001, JPY pairs are 0.01)
+                if 'JPY' in instrument:
+                    pip_value = 0.01
+                else:
+                    pip_value = 0.0001
+                
+                # Calculate stop-loss price
+                # Buy order: stop-loss below current price
+                # Sell order: stop-loss above current price
+                if units > 0:  # Buy
+                    stop_price = current_price - (stop_loss_pips * pip_value)
+                else:  # Sell
+                    stop_price = current_price + (stop_loss_pips * pip_value)
+                
+                # Round to appropriate precision
+                if 'JPY' in instrument:
+                    stop_price = round(stop_price, 3)
+                else:
+                    stop_price = round(stop_price, 5)
+                
+                order_data["order"]["stopLossOnFill"] = {
+                    "price": str(stop_price)
+                }
+                print(f"[ORDER] Setting stop-loss at {stop_price} ({stop_loss_pips} pips)")
         
         try:
             response = requests.post(url, headers=self.headers, json=order_data)
@@ -216,3 +249,27 @@ class OandaClient:
             print(f"[ERROR] Failed to close position for {instrument}: {e}")
         
         return None
+    
+    def close_all_positions(self) -> int:
+        """
+        Close all open positions
+        
+        Returns:
+            Number of positions closed
+        """
+        positions = self.get_open_positions()
+        closed = 0
+        
+        if not positions:
+            print("[INFO] No open positions to close")
+            return 0
+        
+        for pos in positions:
+            if pos['net_units'] != 0:
+                print(f"[CLOSE] Closing {pos['instrument']}: {pos['net_units']} units")
+                result = self.close_position(pos['instrument'])
+                if result:
+                    closed += 1
+        
+        print(f"[CLOSE] Closed {closed} positions")
+        return closed

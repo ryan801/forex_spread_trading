@@ -25,15 +25,18 @@ GRANULARITY = os.environ.get('GRANULARITY', 'H1')  # Candle size for historical 
 MAX_TRADES_PER_DAY = int(os.environ.get('MAX_TRADES_PER_DAY', '1'))
 MAX_OPEN_POSITIONS = int(os.environ.get('MAX_OPEN_POSITIONS', '1'))
 ALLOW_LIVE_TRADES = os.environ.get('ALLOW_LIVE_TRADES', 'false').lower() == 'true'
+STOP_LOSS_PIPS = float(os.environ.get('STOP_LOSS_PIPS', '50'))  # Stop-loss distance in pips
+CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true'
 
 
 # Currency pairs we're trading
-INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD']
+INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD', 'NZD_USD']
 
 # Spread definitions: (pair1, pair2)
 SPREADS = [
     ('EUR_USD', 'GBP_USD'),  # Tight correlation - essentially EUR/GBP
     ('EUR_USD', 'AUD_USD'),  # Softer correlation
+    ('AUD_USD', 'NZD_USD'),  # Very tight - Oceania twins
 ]
 
 
@@ -70,6 +73,7 @@ class TradingBot:
         print(f"[INIT] Tracking spreads: {[f'{p1}/{p2}' for p1, p2 in SPREADS]}")
         print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
+        print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips, Close on shutdown: {CLOSE_ON_SHUTDOWN}")
     
     def _roll_trade_day_if_needed(self) -> None:
         today = datetime.utcnow().date()
@@ -154,9 +158,9 @@ class TradingBot:
             print(f"[TRADE {now}] DRY RUN - No actual orders placed")
             success = True
         else:
-            # Execute the trades
-            result1 = self.client.place_market_order(signal.pair1, pair1_units)
-            result2 = self.client.place_market_order(signal.pair2, pair2_units)
+            # Execute the trades with stop-loss protection
+            result1 = self.client.place_market_order(signal.pair1, pair1_units, stop_loss_pips=STOP_LOSS_PIPS)
+            result2 = self.client.place_market_order(signal.pair2, pair2_units, stop_loss_pips=STOP_LOSS_PIPS)
             success = result1 is not None and result2 is not None
             
             if success:
@@ -284,6 +288,10 @@ def main():
     
     def handle_sigterm(signum, frame):
         print("\n[BOT] Received SIGTERM, shutting down...")
+        if CLOSE_ON_SHUTDOWN and not DRY_RUN:
+            print("[BOT] Closing all open positions...")
+            closed = bot.client.close_all_positions()
+            print(f"[BOT] Closed {closed} positions")
         bot.stop()
     
     signal.signal(signal.SIGTERM, handle_sigterm)
