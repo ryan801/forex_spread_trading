@@ -25,7 +25,7 @@ jobs:
           SHA="${GITHUB_SHA}"
           SHORT_SHA="${SHA:0:7}"
           echo "Building tags: latest, ${SHORT_SHA}"
-          sudo podman build -f Containerfile -t "${IMAGE_BASE}:latest" .
+          sudo podman build --platform linux/amd64 -f Containerfile -t "${IMAGE_BASE}:latest" .
           sudo podman tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${SHORT_SHA}"
           sudo podman push "${IMAGE_BASE}:latest"
           sudo podman push "${IMAGE_BASE}:${SHORT_SHA}"
