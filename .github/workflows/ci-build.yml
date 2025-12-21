@@ -20,34 +20,15 @@ jobs:
         run: |
           sudo podman login ghcr.io -u ryan801 -p "${{ secrets.GHCR_PAT }}"
 
-      - name: Build & push image (multi-arch)
+      - name: Build & push image (tagged)
         run: |
           SHA="${GITHUB_SHA}"
           SHORT_SHA="${SHA:0:7}"
+
           echo "Building tags: latest, ${SHORT_SHA}"
-          
-          # Clean up any existing images and manifests
-          sudo podman rmi "${IMAGE_BASE}:latest" 2>/dev/null || true
-          sudo podman rmi "${IMAGE_BASE}:latest-amd64" 2>/dev/null || true
-          sudo podman rmi "${IMAGE_BASE}:latest-arm64" 2>/dev/null || true
-          sudo podman rmi "${IMAGE_BASE}:${SHORT_SHA}" 2>/dev/null || true
-          sudo podman manifest rm "${IMAGE_BASE}:latest" 2>/dev/null || true
-          sudo podman manifest rm "${IMAGE_BASE}:${SHORT_SHA}" 2>/dev/null || true
-          
-          # Create manifest for multi-arch
-          sudo podman manifest create "${IMAGE_BASE}:latest"
-          sudo podman manifest create "${IMAGE_BASE}:${SHORT_SHA}"
-          
-          # Build for AMD64 (your current setup)
-          sudo podman build --platform linux/amd64 -f Containerfile -t "${IMAGE_BASE}:latest-amd64" .
-          sudo podman manifest add "${IMAGE_BASE}:latest" "${IMAGE_BASE}:latest-amd64"
-          sudo podman manifest add "${IMAGE_BASE}:${SHORT_SHA}" "${IMAGE_BASE}:latest-amd64"
-          
-          # Build for ARM64 (Raspberry Pi)
-          sudo podman build --platform linux/arm64 -f Containerfile -t "${IMAGE_BASE}:latest-arm64" .
-          sudo podman manifest add "${IMAGE_BASE}:latest" "${IMAGE_BASE}:latest-arm64"
-          sudo podman manifest add "${IMAGE_BASE}:${SHORT_SHA}" "${IMAGE_BASE}:latest-arm64"
-          
-          # Push manifests (includes both architectures)
-          sudo podman manifest push "${IMAGE_BASE}:latest" "docker://${IMAGE_BASE}:latest"
-          sudo podman manifest push "${IMAGE_BASE}:${SHORT_SHA}" "docker://${IMAGE_BASE}:${SHORT_SHA}"
+
+          sudo podman build -f Containerfile -t "${IMAGE_BASE}:latest" .
+          sudo podman tag "${IMAGE_BASE}:latest" "${IMAGE_BASE}:${SHORT_SHA}"
+
+          sudo podman push "${IMAGE_BASE}:latest"
+          sudo podman push "${IMAGE_BASE}:${SHORT_SHA}"
