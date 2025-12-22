@@ -75,6 +75,86 @@ class TradingBot:
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
         print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips, Close on shutdown: {CLOSE_ON_SHUTDOWN}")
     
+    def reconcile_positions(self) -> int:
+        """
+        Query OANDA for open positions and reconstruct internal state.
+        This ensures we don't orphan trades after a pod restart.
+        
+        Returns:
+            Number of spread positions reconciled
+        """
+        print("\n[RECONCILE] Checking OANDA for existing positions...")
+        
+        oanda_positions = self.client.get_open_positions()
+        if oanda_positions is None:
+            print("[RECONCILE] Failed to fetch positions from OANDA")
+            return 0
+        
+        # Build a map of instrument -> net_units
+        position_map = {}
+        for pos in oanda_positions:
+            if pos['net_units'] != 0:
+                position_map[pos['instrument']] = pos['net_units']
+                print(f"[RECONCILE] Found: {pos['instrument']} = {pos['net_units']:+.0f} units")
+        
+        if not position_map:
+            print("[RECONCILE] No open positions at OANDA")
+            return 0
+        
+        # Try to match positions to our spread definitions
+        reconciled = 0
+        for pair1, pair2 in SPREADS:
+            spread_name = f"{pair1}/{pair2}"
+            
+            # Check if both legs of this spread are open
+            if pair1 in position_map and pair2 in position_map:
+                pair1_units = position_map[pair1]
+                pair2_units = position_map[pair2]
+                
+                # Determine the spread direction based on position signs
+                # LONG_SPREAD = long pair1, short pair2 (pair1 positive, pair2 negative)
+                # SHORT_SPREAD = short pair1, long pair2 (pair1 negative, pair2 positive)
+                if pair1_units > 0 and pair2_units < 0:
+                    side = "LONG_SPREAD"
+                elif pair1_units < 0 and pair2_units > 0:
+                    side = "SHORT_SPREAD"
+                else:
+                    # Both same direction - not a proper spread trade, skip
+                    print(f"[RECONCILE] {spread_name}: positions exist but not a valid spread (same direction)")
+                    continue
+                
+                # Reconstruct the position tracking
+                self.open_positions[spread_name] = {
+                    'pair1_units': pair1_units,
+                    'pair2_units': pair2_units,
+                    'entry_z': None,  # Unknown - we lost this on restart
+                    'entry_time': None,  # Unknown
+                    'reconciled': True  # Flag that this was recovered
+                }
+                
+                # Update the analyzer's internal state
+                for analyzer in self.analyzer.analyzers.values():
+                    if analyzer.name == spread_name:
+                        analyzer.update_position_state(entered=True, side=side)
+                
+                print(f"[RECONCILE] ✓ Recovered {spread_name}: {side} "
+                      f"({pair1}={pair1_units:+.0f}, {pair2}={pair2_units:+.0f})")
+                reconciled += 1
+                
+                # Remove from map so we can detect orphans
+                del position_map[pair1]
+                del position_map[pair2]
+        
+        # Warn about any positions that don't match our spreads
+        if position_map:
+            print(f"[RECONCILE] ⚠ Unmatched positions (not part of tracked spreads):")
+            for inst, units in position_map.items():
+                print(f"[RECONCILE]   {inst}: {units:+.0f} units - consider closing manually")
+        
+        print(f"[RECONCILE] Complete. Recovered {reconciled} spread position(s)\n")
+        return reconciled
+
+
     def _roll_trade_day_if_needed(self) -> None:
         today = datetime.utcnow().date()
         if today != self.trade_day:
@@ -261,6 +341,8 @@ class TradingBot:
             print("[ERROR] Failed to warm up with historical data")
             sys.exit(1)
         
+        self.reconcile_positions()
+
         # Main loop
         self.running = True
         print(f"[BOT] Entering main loop (poll interval: {POLL_INTERVAL}s)")
