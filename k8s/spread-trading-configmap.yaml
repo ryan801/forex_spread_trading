@@ -27,7 +27,7 @@ data:
   DRY_RUN: "false"
   
   # Stop-loss distance in pips (protects positions if bot dies)
-  STOP_LOSS_PIPS: "50"
+  STOP_LOSS_PIPS: "150"
   
   # Close all positions when bot shuts down gracefully (spread_stop, pod restart, etc)
   # Set to "false" to keep positions open
