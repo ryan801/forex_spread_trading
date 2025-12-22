@@ -93,12 +93,19 @@ class TradingBot:
             print("[RECONCILE] Failed to fetch positions from OANDA")
             return 0
         
+        # Show raw position data from OANDA
+        if oanda_positions:
+            print("[RECONCILE] Raw positions from OANDA:")
+            for pos in oanda_positions:
+                print(f"[RECONCILE]   {pos['instrument']}: long={pos['long_units']}, "
+                      f"short={pos['short_units']}, net={pos['net_units']}")
+        
         # Build a map of instrument -> net_units
         position_map = {}
         for pos in oanda_positions:
             if pos['net_units'] != 0:
                 position_map[pos['instrument']] = pos['net_units']
-                print(f"[RECONCILE] Found: {pos['instrument']} = {pos['net_units']:+.0f} units")
+                print(f"[RECONCILE] Active: {pos['instrument']} = {pos['net_units']:+.0f} units")
         
         if not position_map:
             print("[RECONCILE] No open positions at OANDA")

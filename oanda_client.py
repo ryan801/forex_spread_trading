@@ -218,11 +218,13 @@ class OandaClient:
                 long_units = float(pos['long'].get('units', 0))
                 short_units = float(pos['short'].get('units', 0))
                 
+                # OANDA returns short_units as positive, need to subtract
+                # Long 1000 = net +1000, Short 1000 = net -1000
                 positions.append({
                     'instrument': pos['instrument'],
                     'long_units': long_units,
                     'short_units': short_units,
-                    'net_units': long_units + short_units,
+                    'net_units': long_units - short_units,
                     'unrealized_pl': float(pos.get('unrealizedPL', 0))
                 })
             
