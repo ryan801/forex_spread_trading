@@ -35,6 +35,7 @@ INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD', 'NZD_USD', 'USD_CAD', 'USD_NOK',
 # Spread definitions: (pair1, pair2)
 SPREADS = [
     ('EUR_USD', 'GBP_USD'),  # Tight correlation - essentially EUR/GBP
+    ('EUR_USD', 'AUD_USD'),  # Softer correlation
     ('AUD_USD', 'NZD_USD'),  # Very tight - Oceania twins
     ('USD_CAD', 'USD_NOK'),  # Oil exporters - both track crude
     ('EUR_JPY', 'GBP_JPY'),  # European majors vs safe haven
@@ -211,23 +212,63 @@ class TradingBot:
                 prices[instrument] = price_data['mid']
         return prices
     
-    def execute_spread_trade(self, signal: SpreadSignal) -> bool:
+    # =========================================================================
+    # Calculate USD value per unit for beta-weighted sizing
+    # =========================================================================
+    def get_usd_value_per_unit(self, instrument: str, prices: dict) -> float:
+        """
+        Calculate USD value of 1 unit of an instrument's base currency.
+        
+        Examples:
+            EUR_USD at 1.17 → 1 EUR = $1.17
+            USD_CAD at 1.35 → 1 USD = $1.00
+            EUR_JPY at 184, EUR_USD at 1.17 → 1 EUR = $1.17
+        """
+        base = instrument[:3]   # EUR, GBP, AUD, etc.
+        quote = instrument[4:]  # USD, JPY, CAD, etc.
+        
+        if quote == 'USD':
+            # XXX/USD - price IS the USD value per unit of base
+            return prices.get(instrument, 1.0)
+        elif base == 'USD':
+            # USD/XXX - base is already USD, so 1 unit = $1
+            return 1.0
+        else:
+            # XXX/YYY (e.g., EUR/JPY) - need XXX/USD rate
+            usd_pair = f"{base}_USD"
+            if usd_pair in prices:
+                return prices[usd_pair]
+            else:
+                print(f"[WARN] Cannot determine USD value for {instrument}, using 1.0")
+                return 1.0
+    # =========================================================================
+    
+    def execute_spread_trade(self, signal: SpreadSignal, prices: dict) -> bool:
         """
         Execute a spread trade based on signal
         
         LONG_SPREAD: Buy pair1, Sell pair2
         SHORT_SPREAD: Sell pair1, Buy pair2
+        
+        Uses beta-weighted sizing: pair2 units adjusted so USD exposure matches pair1.
         """
         spread_name = f"{signal.pair1}/{signal.pair2}"
         
+        # Calculate beta-weighted units for dollar-neutral exposure
+        pair1_usd_value = self.get_usd_value_per_unit(signal.pair1, prices)
+        pair2_usd_value = self.get_usd_value_per_unit(signal.pair2, prices)
+        
+        # pair1 gets base TRADE_UNITS, pair2 adjusted to match USD exposure
+        pair2_adjusted = int(TRADE_UNITS * pair1_usd_value / pair2_usd_value)
+        
         if signal.signal == 'LONG_SPREAD':
-            pair1_units = TRADE_UNITS   # Buy
-            pair2_units = -TRADE_UNITS  # Sell
+            pair1_units = TRADE_UNITS      # Buy
+            pair2_units = -pair2_adjusted  # Sell (adjusted)
         elif signal.signal == 'SHORT_SPREAD':
-            pair1_units = -TRADE_UNITS  # Sell
-            pair2_units = TRADE_UNITS   # Buy
+            pair1_units = -TRADE_UNITS     # Sell
+            pair2_units = pair2_adjusted   # Buy (adjusted)
         elif signal.signal == 'CLOSE':
-            # Reverse existing position
+            # Reverse existing position - use ACTUAL units held, not recalculated
             if spread_name in self.open_positions:
                 pos = self.open_positions[spread_name]
                 pair1_units = -pos['pair1_units']
@@ -242,6 +283,9 @@ class TradingBot:
         print(f"\n[TRADE {now}] {'=' * 50}")
         print(f"[TRADE {now}] Signal: {signal.signal} on {spread_name}")
         print(f"[TRADE {now}] Z-Score: {signal.z_score:.4f}")
+        # Show the beta weighting calculation
+        if signal.signal != 'CLOSE':
+            print(f"[TRADE {now}] Beta weighting: {signal.pair1}=${pair1_usd_value:.4f}/unit, {signal.pair2}=${pair2_usd_value:.4f}/unit")
         print(f"[TRADE {now}] {signal.pair1}: {pair1_units:+.0f} units")
         print(f"[TRADE {now}] {signal.pair2}: {pair2_units:+.0f} units")
         
@@ -335,7 +379,7 @@ class TradingBot:
         # Act on signals
         for sig in signals:
             if sig.signal in ['LONG_SPREAD', 'SHORT_SPREAD', 'CLOSE']:
-                self.execute_spread_trade(sig)
+                self.execute_spread_trade(sig, prices)
     
     def run(self) -> None:
         """Main bot loop"""
