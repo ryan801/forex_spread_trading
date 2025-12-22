@@ -35,7 +35,6 @@ INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD', 'NZD_USD', 'USD_CAD', 'USD_NOK',
 # Spread definitions: (pair1, pair2)
 SPREADS = [
     ('EUR_USD', 'GBP_USD'),  # Tight correlation - essentially EUR/GBP
-    ('EUR_USD', 'AUD_USD'),  # Softer correlation
     ('AUD_USD', 'NZD_USD'),  # Very tight - Oceania twins
     ('USD_CAD', 'USD_NOK'),  # Oil exporters - both track crude
     ('EUR_JPY', 'GBP_JPY'),  # European majors vs safe haven
