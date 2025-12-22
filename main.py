@@ -19,7 +19,7 @@ LOOKBACK_PERIODS = int(os.environ.get('LOOKBACK_PERIODS', '20'))
 ENTRY_Z_SCORE = float(os.environ.get('ENTRY_Z_SCORE', '2.0'))
 EXIT_Z_SCORE = float(os.environ.get('EXIT_Z_SCORE', '0.5'))
 TRADE_UNITS = int(os.environ.get('TRADE_UNITS', '1000'))  # Units per leg
-# FIXED: Logic was backwards - should check if == 'true', not == 'False'
+# Logic was backwards - should check if == 'true', not == 'False'
 DRY_RUN = os.environ.get('DRY_RUN', 'true').lower() == 'true'
 GRANULARITY = os.environ.get('GRANULARITY', 'H1')  # Candle size for historical data
 MAX_TRADES_PER_DAY = int(os.environ.get('MAX_TRADES_PER_DAY', '1'))
