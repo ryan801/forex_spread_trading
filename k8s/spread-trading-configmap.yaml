@@ -18,7 +18,7 @@ data:
   EXIT_Z_SCORE: "0.5"
   
   # Units per leg of the spread trade
-  TRADE_UNITS: "1000"
+  TRADE_UNITS: "10000"
   
   # Candle granularity for historical data (S5, M1, M5, M15, H1, H4, D, W, M)
   GRANULARITY: "H1"
