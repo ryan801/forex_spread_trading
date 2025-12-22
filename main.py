@@ -29,7 +29,6 @@ STOP_LOSS_PIPS = float(os.environ.get('STOP_LOSS_PIPS', '50'))  # Stop-loss dist
 CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true'
 
 
-# Currency pairs we're trading
 # Only trading statistically cointegrated pairs
 INSTRUMENTS = ['EUR_USD', 'USD_CHF']
 

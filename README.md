@@ -26,6 +26,17 @@ python cointegration_analyzer.py
    - **Z > +2.5**: Ratio is high → Short EUR/USD, Long GBP/USD
    - **Z < -2.5**: Ratio is low → Long EUR/USD, Short GBP/USD
 5. Closes position when z-score returns near or at zero
+6. Manually Update main.py for the results from the cointegration_analyzer.py
+  E.g.
+    # Only trading statistically cointegrated pairs
+    INSTRUMENTS = ['EUR_USD', 'USD_CHF']
+
+    # Spread definitions: (pair1, pair2, hedge_ratio)
+    # hedge_ratio from cointegration analysis - negative means inverse relationship
+    SPREADS = [
+        ('EUR_USD', 'USD_CHF'),   # Cointegrated (p=0.001), inverse correlation
+    ]
+
 
 ## Project Structure
 
