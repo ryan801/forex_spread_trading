@@ -2,10 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies for numpy/pandas on ARM64
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    gfortran \
+    libopenblas-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
