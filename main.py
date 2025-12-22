@@ -30,16 +30,20 @@ CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true
 
 
 # Currency pairs we're trading
-INSTRUMENTS = ['EUR_USD', 'GBP_USD', 'AUD_USD', 'NZD_USD', 'USD_CAD', 'USD_NOK', 'EUR_JPY', 'GBP_JPY']
+# Only trading statistically cointegrated pairs
+INSTRUMENTS = ['EUR_USD', 'USD_CHF']
 
-# Spread definitions: (pair1, pair2)
+# Spread definitions: (pair1, pair2, hedge_ratio)
+# hedge_ratio from cointegration analysis - negative means inverse relationship
 SPREADS = [
-    ('EUR_USD', 'GBP_USD'),  # Tight correlation - essentially EUR/GBP
-    ('EUR_USD', 'AUD_USD'),  # Softer correlation
-    ('AUD_USD', 'NZD_USD'),  # Very tight - Oceania twins
-    ('USD_CAD', 'USD_NOK'),  # Oil exporters - both track crude
-    ('EUR_JPY', 'GBP_JPY'),  # European majors vs safe haven
+    ('EUR_USD', 'USD_CHF'),   # Cointegrated (p=0.001), inverse correlation
 ]
+
+# Hedge ratios from cointegration analysis
+# Used for dollar-neutral sizing when not using dynamic calculation
+HEDGE_RATIOS = {
+    'EUR_USD/USD_CHF': -1.1895,  # Negative = inverse relationship
+}
 
 
 class TradingBot:
@@ -95,7 +99,7 @@ class TradingBot:
             print("[RECONCILE] Failed to fetch positions from OANDA")
             return 0
         
-        # Show raw position data from OANDA
+        # DEBUG: Show raw position data from OANDA
         if oanda_positions:
             print("[RECONCILE] Raw positions from OANDA:")
             for pos in oanda_positions:
@@ -123,17 +127,33 @@ class TradingBot:
                 pair1_units = position_map[pair1]
                 pair2_units = position_map[pair2]
                 
+                # Check if this is an inverse correlation pair
+                hedge_ratio = HEDGE_RATIOS.get(spread_name, 1.0)
+                is_inverse = hedge_ratio < 0
+                
                 # Determine the spread direction based on position signs
-                # LONG_SPREAD = long pair1, short pair2 (pair1 positive, pair2 negative)
-                # SHORT_SPREAD = short pair1, long pair2 (pair1 negative, pair2 positive)
-                if pair1_units > 0 and pair2_units < 0:
-                    side = "LONG_SPREAD"
-                elif pair1_units < 0 and pair2_units > 0:
-                    side = "SHORT_SPREAD"
+                if is_inverse:
+                    # INVERSE pairs: both legs same direction
+                    # LONG_SPREAD = both positive
+                    # SHORT_SPREAD = both negative
+                    if pair1_units > 0 and pair2_units > 0:
+                        side = "LONG_SPREAD"
+                    elif pair1_units < 0 and pair2_units < 0:
+                        side = "SHORT_SPREAD"
+                    else:
+                        print(f"[RECONCILE] {spread_name}: inverse pair but opposite directions - invalid")
+                        continue
                 else:
-                    # Both same direction - not a proper spread trade, skip
-                    print(f"[RECONCILE] {spread_name}: positions exist but not a valid spread (same direction)")
-                    continue
+                    # Normal pairs: opposite directions
+                    # LONG_SPREAD = long pair1, short pair2
+                    # SHORT_SPREAD = short pair1, long pair2
+                    if pair1_units > 0 and pair2_units < 0:
+                        side = "LONG_SPREAD"
+                    elif pair1_units < 0 and pair2_units > 0:
+                        side = "SHORT_SPREAD"
+                    else:
+                        print(f"[RECONCILE] {spread_name}: positions exist but not a valid spread (same direction)")
+                        continue
                 
                 # Reconstruct the position tracking
                 self.open_positions[spread_name] = {
@@ -149,7 +169,8 @@ class TradingBot:
                     if analyzer.name == spread_name:
                         analyzer.update_position_state(entered=True, side=side)
                 
-                print(f"[RECONCILE] ✓ Recovered {spread_name}: {side} "
+                inverse_note = " (inverse pair)" if is_inverse else ""
+                print(f"[RECONCILE] ✓ Recovered {spread_name}: {side}{inverse_note} "
                       f"({pair1}={pair1_units:+.0f}, {pair2}={pair2_units:+.0f})")
                 reconciled += 1
                 
@@ -247,10 +268,15 @@ class TradingBot:
         """
         Execute a spread trade based on signal
         
-        LONG_SPREAD: Buy pair1, Sell pair2
-        SHORT_SPREAD: Sell pair1, Buy pair2
+        For POSITIVE correlation (normal):
+            LONG_SPREAD: Buy pair1, Sell pair2
+            SHORT_SPREAD: Sell pair1, Buy pair2
+            
+        For NEGATIVE correlation (inverse relationship like EUR_USD/USD_CHF):
+            LONG_SPREAD: Buy pair1, Buy pair2 (both same direction)
+            SHORT_SPREAD: Sell pair1, Sell pair2 (both same direction)
         
-        Uses beta-weighted sizing: pair2 units adjusted so USD exposure matches pair1.
+        Uses beta-weighted sizing for dollar-neutral exposure.
         """
         spread_name = f"{signal.pair1}/{signal.pair2}"
         now = datetime.utcnow().strftime('%H:%M')
@@ -286,12 +312,24 @@ class TradingBot:
         # pair1 gets base TRADE_UNITS, pair2 adjusted to match USD exposure
         pair2_adjusted = int(TRADE_UNITS * pair1_usd_value / pair2_usd_value)
         
+        # Check if this is an inverse correlation pair
+        hedge_ratio = HEDGE_RATIOS.get(spread_name, 1.0)
+        is_inverse = hedge_ratio < 0
+        
         if signal.signal == 'LONG_SPREAD':
             pair1_units = TRADE_UNITS      # Buy
-            pair2_units = -pair2_adjusted  # Sell (adjusted)
+            if is_inverse:
+                # Inverse: both same direction
+                pair2_units = pair2_adjusted   # Also Buy
+            else:
+                pair2_units = -pair2_adjusted  # Sell (normal)
         elif signal.signal == 'SHORT_SPREAD':
             pair1_units = -TRADE_UNITS     # Sell
-            pair2_units = pair2_adjusted   # Buy (adjusted)
+            if is_inverse:
+                # Inverse: both same direction
+                pair2_units = -pair2_adjusted  # Also Sell
+            else:
+                pair2_units = pair2_adjusted   # Buy (normal)
         elif signal.signal == 'CLOSE':
             # Reverse existing position - use ACTUAL units held, not recalculated
             if spread_name in self.open_positions:
@@ -309,7 +347,8 @@ class TradingBot:
         print(f"[TRADE {now}] Z-Score: {signal.z_score:.4f}")
         # Show the beta weighting calculation
         if signal.signal != 'CLOSE':
-            print(f"[TRADE {now}] Beta weighting: {signal.pair1}=${pair1_usd_value:.4f}/unit, {signal.pair2}=${pair2_usd_value:.4f}/unit")
+            inverse_note = " (INVERSE pair)" if is_inverse else ""
+            print(f"[TRADE {now}] Beta weighting: {signal.pair1}=${pair1_usd_value:.4f}/unit, {signal.pair2}=${pair2_usd_value:.4f}/unit{inverse_note}")
         print(f"[TRADE {now}] {signal.pair1}: {pair1_units:+.0f} units")
         print(f"[TRADE {now}] {signal.pair2}: {pair2_units:+.0f} units")
         

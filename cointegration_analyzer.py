@@ -160,7 +160,7 @@ class CointegrationAnalyzer:
         
         # rho is approximately 1 + coefficient on lagged spread
         # For mean reversion: spread_t - spread_{t-1} = (rho - 1) * spread_{t-1}
-        rho = model.params[1] + 1
+        rho = model.params.iloc[1] + 1
         
         if rho >= 1 or rho <= 0:
             return float('inf')  # Not mean-reverting
