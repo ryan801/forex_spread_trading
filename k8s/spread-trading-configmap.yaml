@@ -21,7 +21,7 @@ data:
   TRADE_UNITS: "100000"
   
   # Candle granularity for historical data (S5, M1, M5, M15, H1, H4, D, W, M)
-  GRANULARITY: "H1"
+  GRANULARITY: "D"
   
   # Set to "true" for paper trading, "false" for REAL trades
   DRY_RUN: "false"
