@@ -31,4 +31,4 @@ data:
   
   # Close all positions when bot shuts down gracefully (spread_stop, pod restart, etc)
   # Set to "false" to keep positions open
-  CLOSE_ON_SHUTDOWN: "true"
+  CLOSE_ON_SHUTDOWN: "false"

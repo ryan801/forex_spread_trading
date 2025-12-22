@@ -75,6 +75,9 @@ class TradingBot:
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
         print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips, Close on shutdown: {CLOSE_ON_SHUTDOWN}")
     
+    # =========================================================================
+    # Reconcile positions from OANDA on startup
+    # =========================================================================
     def reconcile_positions(self) -> int:
         """
         Query OANDA for open positions and reconstruct internal state.
@@ -153,8 +156,8 @@ class TradingBot:
         
         print(f"[RECONCILE] Complete. Recovered {reconciled} spread position(s)\n")
         return reconciled
-
-
+    # =========================================================================
+    
     def _roll_trade_day_if_needed(self) -> None:
         today = datetime.utcnow().date()
         if today != self.trade_day:
@@ -231,8 +234,8 @@ class TradingBot:
         print(f"\n[TRADE {now}] {'=' * 50}")
         print(f"[TRADE {now}] Signal: {signal.signal} on {spread_name}")
         print(f"[TRADE {now}] Z-Score: {signal.z_score:.4f}")
-        print(f"[TRADE {now}] {signal.pair1}: {pair1_units:+d} units")
-        print(f"[TRADE {now}] {signal.pair2}: {pair2_units:+d} units")
+        print(f"[TRADE {now}] {signal.pair1}: {pair1_units:+.0f} units")
+        print(f"[TRADE {now}] {signal.pair2}: {pair2_units:+.0f} units")
         
         if DRY_RUN:
             print(f"[TRADE {now}] DRY RUN - No actual orders placed")
@@ -292,7 +295,9 @@ class TradingBot:
             if spread_name in self.open_positions:
                 pos = self.open_positions[spread_name]
                 side = "LONG" if pos['pair1_units'] > 0 else "SHORT"
-                pos_indicator = f" [POSITION: {side}]"
+                # Show if position was reconciled from restart
+                reconciled_flag = " (reconciled)" if pos.get('reconciled') else ""
+                pos_indicator = f" [POSITION: {side}{reconciled_flag}]"
             
             print(f"  {spread_name}:")
             print(f"    Ratio: {sig.ratio:.6f} | Z-Score: {sig.z_score:+.4f} | Signal: {sig.signal}{pos_indicator}")
@@ -341,8 +346,12 @@ class TradingBot:
             print("[ERROR] Failed to warm up with historical data")
             sys.exit(1)
         
+        # =====================================================================
+        # Reconcile any existing positions from OANDA
+        # =====================================================================
         self.reconcile_positions()
-
+        # =====================================================================
+        
         # Main loop
         self.running = True
         print(f"[BOT] Entering main loop (poll interval: {POLL_INTERVAL}s)")
