@@ -253,6 +253,31 @@ class TradingBot:
         Uses beta-weighted sizing: pair2 units adjusted so USD exposure matches pair1.
         """
         spread_name = f"{signal.pair1}/{signal.pair2}"
+        now = datetime.utcnow().strftime('%H:%M')
+        
+        # =====================================================================
+        # SAFETY CHECK - Query OANDA before opening new positions
+        # This prevents stacking even if internal tracking fails
+        # =====================================================================
+        if signal.signal in ['LONG_SPREAD', 'SHORT_SPREAD'] and not DRY_RUN:
+            oanda_positions = self.client.get_open_positions()
+            if oanda_positions:
+                # Build set of instruments with existing exposure
+                instruments_with_positions = set()
+                for pos in oanda_positions:
+                    if pos['net_units'] != 0:
+                        instruments_with_positions.add(pos['instrument'])
+                
+                # Check if either leg of this spread already has exposure
+                if signal.pair1 in instruments_with_positions:
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair1} already has open position at OANDA")
+                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
+                    return False
+                if signal.pair2 in instruments_with_positions:
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair2} already has open position at OANDA")
+                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
+                    return False
+        # =====================================================================
         
         # Calculate beta-weighted units for dollar-neutral exposure
         pair1_usd_value = self.get_usd_value_per_unit(signal.pair1, prices)
@@ -279,7 +304,6 @@ class TradingBot:
         else:
             return False
         
-        now = datetime.utcnow().strftime('%H:%M')
         print(f"\n[TRADE {now}] {'=' * 50}")
         print(f"[TRADE {now}] Signal: {signal.signal} on {spread_name}")
         print(f"[TRADE {now}] Z-Score: {signal.z_score:.4f}")
