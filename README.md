@@ -1,6 +1,6 @@
 # Forex Pairs Trading Bot
 
-A statistical arbitrage bot that trades currency pair spreads based on z-score mean reversion.
+A statistical cointegration analyzer to arbitrage bot that trades currency pair spreads based on z-score mean reversion.
 
 ## Strategy Overview
 
@@ -13,28 +13,36 @@ When the ratio between pairs deviates significantly from its historical average 
 
 ## How It Works
 
-1. Calculates the ratio: `price(EUR/USD) / price(GBP/USD)`
-2. Tracks the rolling mean and standard deviation of this ratio
-3. Computes z-score: `(current_ratio - mean) / std_dev`
+1. Run 
+```
+pip install statsmodels --break-system-packages
+```
+2. Run
+```
+python cointegration_analyzer.py
+```
+3. This generates a report for the strong candidates for spread trading based on the daily chart
 4. When z-score exceeds threshold (e.g., ±2.0):
-   - **Z > +2.0**: Ratio is high → Short EUR/USD, Long GBP/USD
-   - **Z < -2.0**: Ratio is low → Long EUR/USD, Short GBP/USD
-5. Closes position when z-score returns near zero
+   - **Z > +2.5**: Ratio is high → Short EUR/USD, Long GBP/USD
+   - **Z < -2.5**: Ratio is low → Long EUR/USD, Short GBP/USD
+5. Closes position when z-score returns near or at zero
 
 ## Project Structure
 
 ```
 forex-pairs-bot/
-├── main.py              # Bot entry point and main loop
-├── oanda_client.py      # OANDA API wrapper
-├── pairs_analyzer.py    # Z-score calculation logic
-├── requirements.txt     # Python dependencies
-├── Dockerfile           # Container image definition
-├── build-and-deploy.sh  # OpenShift build/deploy helper
+├── main.py                   # Bot entry point and main loop
+├── oanda_client.py           # OANDA API wrapper
+├── pairs_analyzer.py         # Z-score calculation logic
+├── cointegration_analyzer.py # Run locally, one-time analyzes
+├── requirements.txt          # Python dependencies
+├── close_all.py              # Emergency close script
+├── Containerfile             # Container image definition
+├── build-and-deploy.sh       # OpenShift build/deploy helper
 └── k8s/
-    ├── configmap.yaml   # Bot configuration
-    ├── secret.yaml      # OANDA credentials (EDIT THIS)
-    └── deployment.yaml  # Kubernetes deployment
+    ├── spread-trading-configmap.yaml   # Bot configuration
+    ├── spread-trading-secret.yaml      # OANDA credentials (EDIT THIS)
+    └── spread-trading-deployment.yaml  # Kubernetes deployment
 ```
 
 ## Setup Instructions
@@ -80,6 +88,8 @@ oc apply -f k8s/secret.yaml
 
 ### 4. Monitor the Bot
 
+Can view OpenShift, OANDA, or Manually
+
 ```bash
 # Watch the logs
 oc logs -f deploy/forex-pairs-bot
@@ -105,7 +115,7 @@ All configuration is in `k8s/configmap.yaml`:
 | `GRANULARITY` | H1 | Candle size for historical data |
 | `DRY_RUN` | true | Set to "false" for real trades |
 
-To update config:
+To update config (this is done with the manual CD pipeline):
 
 ```bash
 # Edit the configmap
