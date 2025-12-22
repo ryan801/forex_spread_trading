@@ -6,16 +6,16 @@ metadata:
     app: forex-spread-trading
 data:
   # Polling interval in seconds - how often to check prices
-  POLL_INTERVAL: "60"
+  POLL_INTERVAL: "3660"
   
   # Number of periods for moving average/std dev calculation
-  LOOKBACK_PERIODS: "20"
+  LOOKBACK_PERIODS: "60"
   
   # Z-score threshold to enter a trade
-  ENTRY_Z_SCORE: "2.0"
+  ENTRY_Z_SCORE: "2.5"
   
   # Z-score threshold to exit (close to mean)
-  EXIT_Z_SCORE: "0.5"
+  EXIT_Z_SCORE: "0.0"
   
   # Units per leg of the spread trade
   TRADE_UNITS: "100000"
