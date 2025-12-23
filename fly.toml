@@ -12,7 +12,7 @@ primary_region = "ord"
   GRANULARITY = "D"
   LOOKBACK_PERIODS = "20"
   POLL_INTERVAL = "60"
-  STOP_LOSS_PIPS = "150"
+  STOP_LOSS_PIPS = "500"
   TRADE_UNITS = "10000"
 
 [processes]
