@@ -33,6 +33,7 @@ primary_region = 'ord'
   memory = '1gb'
   cpus = 1
   memory_mb = 2048
+  auto_stop_machines = "off"
 
 [restart]
   policy = "always"
