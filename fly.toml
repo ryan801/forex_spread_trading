@@ -23,6 +23,7 @@ primary_region = "ord"
   cpu_kind = "shared"
   cpus = 1
 
-[restart]
+[[restart]]
   policy = "always"
   retries = 10
+  processes = ["app"]
