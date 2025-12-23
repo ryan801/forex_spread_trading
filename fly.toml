@@ -1,0 +1,35 @@
+# fly.toml app configuration file generated for forex-spread-trading on 2025-12-22T19:29:09-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'forex-spread-trading'
+primary_region = 'ord'
+
+[build]
+  dockerfile = "Containerfile"
+
+[env]
+  PORT = '8080'
+  POLL_INTERVAL = "60"
+  LOOKBACK_PERIODS = "20"
+  ENTRY_Z_SCORE = "2.5"
+  EXIT_Z_SCORE = "0.1"
+  TRADE_UNITS = "10000"
+  GRANULARITY = "D"
+  DRY_RUN = "false"
+  STOP_LOSS_PIPS = "150"
+  CLOSE_ON_SHUTDOWN = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpus = 1
+  memory_mb = 2048
