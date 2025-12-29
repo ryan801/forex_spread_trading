@@ -50,13 +50,11 @@ class TradingBot:
     
     def __init__(self):
         self.running = False
-        # FIXED: client was undefined, should be OandaClient()
         self.client = OandaClient()
         self.open_positions = {}
 
-        # FIXED: typo 'datetiem' -> 'datetime', added missing ()
         self.trade_day = datetime.utcnow().date()
-        # FIXED: Changed from {} to 0 to match usage later
+        
         self.trades_today = 0
         
         self.analyzer = MultiPairAnalyzer()
