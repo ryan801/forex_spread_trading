@@ -4,16 +4,23 @@ primary_region = "ord"
 [build]
   dockerfile = "Containerfile"
 
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ CYAN: Updated environment variables for dual spread strategy               │
+# └─────────────────────────────────────────────────────────────────────────────┘
 [env]
-  CLOSE_ON_SHUTDOWN = "false"
-  DRY_RUN = "false"
-  ENTRY_Z_SCORE = "2.3"
-  EXIT_Z_SCORE = "0.2"
-  GRANULARITY = "D"
-  LOOKBACK_PERIODS = "20"
-  POLL_INTERVAL = "60"
-  STOP_LOSS_PIPS = "500"
+  # Check every hour - the bot will internally decide which spreads to evaluate
+  # based on their timeframe (daily vs weekly)
+  POLL_INTERVAL = "3600"
+  
+  # Position sizing
   TRADE_UNITS = "10000"
+  
+  # Risk management
+  STOP_LOSS_PIPS = "150"
+  
+  # Safety
+  DRY_RUN = "false"
+  CLOSE_ON_SHUTDOWN = "true"
 
 [processes]
   app = "python -u main.py"

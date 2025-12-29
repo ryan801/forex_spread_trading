@@ -1,0 +1,236 @@
+
+======================================================================
+  SPREAD TRADING BACKTEST
+======================================================================
+
+  Testing 5 pairs × 2 timeframes
+  Parameter combinations: 36
+  Data: 5 years
+
+======================================================================
+  EUR_USD/USD_CHF
+======================================================================
+
+  [Daily]
+  Fetching EUR_USD (D) from OANDA...
+  Fetching USD_CHF (D) from OANDA...
+    Data points: 1269
+    Cointegrated: ✗ NO (p=0.4380)
+    Hedge ratio: -0.5670
+    Half-life: 153.7 periods
+    Correlation: -0.4941
+    Z-score range: [-2.91, 3.47]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 20.02%
+    Sharpe: 1.03
+    Max DD: 394.23%
+    Trades: 52
+    Win rate: 65.4%
+
+  [Weekly]
+  Fetching EUR_USD (W) from OANDA...
+  Fetching USD_CHF (W) from OANDA...
+    Data points: 269
+    Cointegrated: ✗ NO (p=0.6909)
+    Hedge ratio: -0.5757
+    Half-life: 47.8 periods
+    Correlation: -0.4641
+    Z-score range: [-2.97, 2.56]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: -37.33%
+    Sharpe: -1.21
+    Max DD: 1169.92%
+    Trades: 9
+    Win rate: 44.4%
+
+======================================================================
+  EUR_JPY/GBP_JPY
+======================================================================
+
+  [Daily]
+  Fetching EUR_JPY (D) from OANDA...
+  Fetching GBP_JPY (D) from OANDA...
+    Data points: 1269
+    Cointegrated: ✗ NO (p=0.2025)
+    Hedge ratio: 0.8409
+    Half-life: 39.3 periods
+    Correlation: 0.9859
+    Z-score range: [-3.51, 3.11]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 62.16%
+    Sharpe: 1.68
+    Max DD: 34.11%
+    Trades: 55
+    Win rate: 72.7%
+
+  [Weekly]
+  Fetching EUR_JPY (W) from OANDA...
+  Fetching GBP_JPY (W) from OANDA...
+    Data points: 269
+    Cointegrated: ✗ NO (p=0.2310)
+    Hedge ratio: 0.8188
+    Half-life: 10.0 periods
+    Correlation: 0.9856
+    Z-score range: [-2.64, 3.24]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 52.79%
+    Sharpe: 2.37
+    Max DD: 15.06%
+    Trades: 14
+    Win rate: 85.7%
+
+======================================================================
+  AUD_USD/NZD_USD
+======================================================================
+
+  [Daily]
+  Fetching AUD_USD (D) from OANDA...
+  Fetching NZD_USD (D) from OANDA...
+    Data points: 1265
+    Cointegrated: ✗ NO (p=0.1398)
+    Hedge ratio: 0.8715
+    Half-life: 45.7 periods
+    Correlation: 0.9651
+    Z-score range: [-3.87, 2.96]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 73.87%
+    Sharpe: 1.71
+    Max DD: 139.67%
+    Trades: 50
+    Win rate: 78.0%
+
+  [Weekly]
+  Fetching AUD_USD (W) from OANDA...
+  Fetching NZD_USD (W) from OANDA...
+    Data points: 269
+    Cointegrated: ✗ NO (p=0.2761)
+    Hedge ratio: 0.8764
+    Half-life: 9.1 periods
+    Correlation: 0.9692
+    Z-score range: [-3.36, 2.35]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 23.11%
+    Sharpe: 0.53
+    Max DD: 53.22%
+    Trades: 10
+    Win rate: 60.0%
+
+======================================================================
+  EUR_USD/GBP_USD
+======================================================================
+
+  [Daily]
+  Fetching EUR_USD (D) from OANDA...
+  Fetching GBP_USD (D) from OANDA...
+    Data points: 1269
+    Cointegrated: ✗ NO (p=0.1167)
+    Hedge ratio: 0.7960
+    Half-life: 36.0 periods
+    Correlation: 0.9446
+    Z-score range: [-3.54, 3.23]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 77.22%
+    Sharpe: 1.99
+    Max DD: 27.08%
+    Trades: 56
+    Win rate: 75.0%
+
+  [Weekly]
+  Fetching EUR_USD (W) from OANDA...
+  Fetching GBP_USD (W) from OANDA...
+    Data points: 269
+    Cointegrated: ✗ NO (p=0.0989)
+    Hedge ratio: 0.8333
+    Half-life: 9.2 periods
+    Correlation: 0.9289
+    Z-score range: [-2.83, 3.30]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 40.27%
+    Sharpe: 1.88
+    Max DD: 20.75%
+    Trades: 14
+    Win rate: 71.4%
+
+======================================================================
+  USD_CAD/USD_NOK
+======================================================================
+
+  [Daily]
+  Fetching USD_CAD (D) from OANDA...
+  Fetching USD_NOK (D) from OANDA...
+    Data points: 1269
+    Cointegrated: ✗ NO (p=0.3334)
+    Hedge ratio: 0.0582
+    Half-life: 66.1 periods
+    Correlation: 0.8872
+    Z-score range: [-3.39, 3.20]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: -11.11%
+    Sharpe: -0.31
+    Max DD: 704.28%
+    Trades: 56
+    Win rate: 62.5%
+
+  [Weekly]
+  Fetching USD_CAD (W) from OANDA...
+  Fetching USD_NOK (W) from OANDA...
+    Data points: 269
+    Cointegrated: ✗ NO (p=0.2446)
+    Hedge ratio: 0.0569
+    Half-life: 13.4 periods
+    Correlation: 0.8900
+    Z-score range: [-2.88, 2.79]
+
+    Best params: entry_z=1.5, exit_z=0.2, lookback=20
+    Return: 2.37%
+    Sharpe: 0.12
+    Max DD: 167.42%
+    Trades: 11
+    Win rate: 54.5%
+
+======================================================================
+  RESULTS SUMMARY - TOP 10 CONFIGURATIONS
+======================================================================
+
+  Pair                 TF     Entry  Exit   LB   Return     Sharpe   MaxDD      Trades   WinRate  Coint 
+  -------------------- ------ ------ ------ ---- ---------- -------- ---------- -------- -------- ------
+  EUR/USD              D      1.5    0.2    20   +20.0%     1.03     394.2%     52       65%      ✗     
+  EUR/USD              D      1.5    0.2    30   +15.6%     0.76     373.9%     38       68%      ✗     
+  EUR/USD              D      1.5    0.2    60   -17.3%     -0.89    1211.5%    23       61%      ✗     
+  EUR/USD              D      1.5    0.5    20   +10.0%     0.61     271.2%     73       70%      ✗     
+  EUR/USD              D      1.5    0.5    30   +1.6%      0.10     335.2%     50       62%      ✗     
+  EUR/USD              D      1.5    0.5    60   -8.5%      -0.44    1073.5%    29       69%      ✗     
+  EUR/USD              D      2.0    0.2    20   +24.5%     1.38     233.9%     43       63%      ✗     
+  EUR/USD              D      2.0    0.2    30   +26.7%     1.43     211.2%     32       69%      ✗     
+  EUR/USD              D      2.0    0.2    60   -20.7%     -1.32    -0.0%      15       47%      ✗     
+  EUR/USD              D      2.0    0.5    20   +7.8%      0.59     248.1%     53       64%      ✗     
+
+======================================================================
+  RECOMMENDATION
+======================================================================
+
+  Best configuration:
+    Pair: EUR_USD/USD_CHF
+    Timeframe: Daily
+    Entry Z-score: 1.5
+    Exit Z-score: 0.2
+    Lookback: 20 periods
+    Expected annual return: 4.0%
+    Sharpe ratio: 1.03
+    Max drawdown: 394.2%
+    Trades over 5 years: 52
+
+  Daily vs Weekly comparison for EUR_USD/USD_CHF:
+    Daily:  Return=+20.0%, Sharpe=1.03, Trades=52
+    Weekly: Return=-37.3%, Sharpe=-1.21, Trades=9
+
+
