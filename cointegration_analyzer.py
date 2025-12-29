@@ -46,8 +46,9 @@ SPREADS_TO_TEST = [
 ]
 
 # How much history to analyze
-LOOKBACK_DAYS = 365  # 1 year of daily data
-GRANULARITY = 'D'    # Daily candles
+LOOKBACK_DAYS = 365          # Max history to pull
+ROLLING_LOOKBACK_DAYS = 180  # Use recent window for stability tests
+GRANULARITY = 'D'            # Daily candles
 
 
 class CointegrationAnalyzer:
@@ -96,10 +97,37 @@ class CointegrationAnalyzer:
         x_with_const = add_constant(x)
         model = OLS(y, x_with_const).fit()
         return model.params.iloc[1]  # The slope (beta)
+
+    def kalman_hedge_ratios(self, y: pd.Series, x: pd.Series, R: float = 0.001, Q: float = 0.01) -> pd.Series:
+        """
+        Estimate time-varying hedge ratios with a simple Kalman filter.
+        Returns a series of beta_t aligned to y/x index.
+        """
+        beta, P = 0.0, 1.0
+        betas = []
+        for yt, xt in zip(y, x):
+            beta_pred, P_pred = beta, P + Q
+            if xt == 0:
+                betas.append(beta_pred)
+                beta, P = beta_pred, P_pred
+                continue
+            y_pred = beta_pred * xt
+            e = yt - y_pred
+            S = xt * xt * P_pred + R
+            K = P_pred * xt / S
+            beta = beta_pred + K * e
+            P = (1 - K * xt) * P_pred
+            betas.append(beta)
+        return pd.Series(betas, index=y.index, name="kalman_beta")
     
     def calculate_spread(self, pair1: pd.Series, pair2: pd.Series, hedge_ratio: float) -> pd.Series:
         """Calculate the spread: pair1 - hedge_ratio * pair2"""
         return pair1 - hedge_ratio * pair2
+
+    def calculate_dynamic_spread(self, pair1: pd.Series, pair2: pd.Series, hedge_ratios: pd.Series) -> pd.Series:
+        """Calculate spread using time-varying hedge ratios"""
+        aligned = pd.concat([pair1, pair2, hedge_ratios], axis=1).dropna()
+        return aligned.iloc[:, 0] - aligned.iloc[:, 2] * aligned.iloc[:, 1]
     
     def test_stationarity(self, series: pd.Series) -> dict:
         """
@@ -167,6 +195,33 @@ class CointegrationAnalyzer:
         
         half_life = -np.log(2) / np.log(rho)
         return half_life
+
+    def fit_ou_params(self, spread: pd.Series, dt: float = 1.0) -> dict:
+        """
+        Fit an Ornstein-Uhlenbeck process to the spread via AR(1) mapping.
+        Returns mu, sigma, kappa, half-life.
+        """
+        clean = spread.dropna()
+        if len(clean) < 20:
+            return {'mu': np.nan, 'sigma': np.nan, 'kappa': np.nan, 'half_life': float('inf'), 'r2': np.nan}
+
+        x = clean.shift(1).dropna()
+        y = clean.iloc[1:]
+        x_with_const = add_constant(x)
+        model = OLS(y, x_with_const).fit()
+
+        a = model.params.iloc[0]
+        b = model.params.iloc[1]
+
+        if b <= 0 or b >= 1:
+            return {'mu': np.nan, 'sigma': np.nan, 'kappa': np.nan, 'half_life': float('inf'), 'r2': model.rsquared}
+
+        kappa = -np.log(b) / dt
+        mu = a / (1 - b)
+        sigma = np.sqrt(model.scale * 2 * kappa / (1 - b ** 2))
+        half_life = np.log(2) / kappa if kappa > 0 else float('inf')
+
+        return {'mu': mu, 'sigma': sigma, 'kappa': kappa, 'half_life': half_life, 'r2': model.rsquared}
     
     def calculate_spread_stats(self, spread: pd.Series) -> dict:
         """Calculate statistics about the spread"""
@@ -180,6 +235,27 @@ class CointegrationAnalyzer:
             'pct_time_outside_1std': (abs(spread - spread.mean()) > spread.std()).mean() * 100,
             'pct_time_outside_2std': (abs(spread - spread.mean()) > 2 * spread.std()).mean() * 100,
         }
+
+    def recommend_params(self, ou_params: dict, default_entry: float = 2.3, default_exit: float = 0.2) -> dict:
+        """
+        Suggest entry/exit z-scores and time-stop based on observed half-life.
+        """
+        hl = ou_params.get('half_life', float('inf'))
+        if not np.isfinite(hl):
+            return {'entry_z': default_entry + 0.3, 'exit_z': default_exit, 'time_stop_bars': None}
+
+        if hl < 5:
+            entry_z = default_entry + 0.3  # tighten regime risk
+        elif hl <= 15:
+            entry_z = default_entry
+        elif hl <= 40:
+            entry_z = default_entry + 0.2
+        else:
+            entry_z = default_entry + 0.4
+
+        exit_z = default_exit
+        time_stop = max(1, int(round(2 * hl)))
+        return {'entry_z': entry_z, 'exit_z': exit_z, 'time_stop_bars': time_stop}
     
     def analyze_pair(self, pair1_symbol: str, pair2_symbol: str) -> dict:
         """Full analysis of a spread pair"""
@@ -193,20 +269,30 @@ class CointegrationAnalyzer:
         
         # Align data
         combined = pd.concat([pair1, pair2], axis=1).dropna()
-        pair1_aligned = combined.iloc[:, 0]
-        pair2_aligned = combined.iloc[:, 1]
+        if combined.empty:
+            return {'error': 'No overlapping data'}
+
+        # Focus on recent window to avoid stale betas
+        windowed = combined.tail(ROLLING_LOOKBACK_DAYS)
+        pair1_aligned = windowed.iloc[:, 0]
+        pair2_aligned = windowed.iloc[:, 1]
         
-        # Calculate hedge ratio
+        # Static hedge ratio (OLS) and dynamic hedge ratios (Kalman)
         hedge_ratio = self.calculate_hedge_ratio(pair1_aligned, pair2_aligned)
+        kalman_betas = self.kalman_hedge_ratios(pair1_aligned, pair2_aligned)
+        kalman_beta_latest = kalman_betas.iloc[-1]
         
         # Calculate spread
-        spread = self.calculate_spread(pair1_aligned, pair2_aligned, hedge_ratio)
+        spread_static = self.calculate_spread(pair1_aligned, pair2_aligned, hedge_ratio)
+        spread_dynamic = self.calculate_dynamic_spread(pair1_aligned, pair2_aligned, kalman_betas)
         
         # Run tests
         cointegration = self.test_cointegration(pair1_aligned, pair2_aligned)
-        stationarity = self.test_stationarity(spread)
-        half_life = self.calculate_half_life(spread)
-        spread_stats = self.calculate_spread_stats(spread)
+        stationarity = self.test_stationarity(spread_dynamic)
+        half_life = self.calculate_half_life(spread_dynamic)
+        spread_stats = self.calculate_spread_stats(spread_dynamic)
+        ou_params = self.fit_ou_params(spread_dynamic)
+        recommendations = self.recommend_params(ou_params)
         
         # Calculate correlation for comparison
         correlation = pair1_aligned.corr(pair2_aligned)
@@ -215,13 +301,18 @@ class CointegrationAnalyzer:
             'pair1': pair1_symbol,
             'pair2': pair2_symbol,
             'data_points': len(combined),
+            'window_points': len(windowed),
             'hedge_ratio': hedge_ratio,
+            'kalman_beta_latest': kalman_beta_latest,
+            'kalman_beta_mean': kalman_betas.mean(),
             'correlation': correlation,
             'cointegration': cointegration,
             'stationarity': stationarity,
             'half_life_days': half_life,
+            'ou_params': ou_params,
             'spread_stats': spread_stats,
-            'spread_series': spread  # For plotting if needed
+            'spread_series': spread_dynamic,  # For plotting if needed
+            'recommendations': recommendations
         }
     
     def score_pair(self, analysis: dict) -> float:
@@ -283,9 +374,10 @@ def print_analysis(analysis: dict) -> None:
     print(f"  {pair_name}")
     print(f"{'='*70}")
     
-    print(f"\n  Data: {analysis['data_points']} daily observations")
+    print(f"\n  Data: {analysis['data_points']} daily observations ({analysis['window_points']} used for rolling window)")
     print(f"  Correlation: {analysis['correlation']:.4f}")
-    print(f"  Optimal hedge ratio: {analysis['hedge_ratio']:.4f}")
+    print(f"  OLS hedge ratio (static): {analysis['hedge_ratio']:.4f}")
+    print(f"  Kalman hedge ratio: last={analysis['kalman_beta_latest']:.4f}, mean={analysis['kalman_beta_mean']:.4f}")
     
     # Cointegration result
     coint = analysis['cointegration']
@@ -306,6 +398,14 @@ def print_analysis(analysis: dict) -> None:
     else:
         hl_str = f"{hl:.1f} days"
     print(f"\n  Mean Reversion Half-Life: {hl_str}")
+
+    # OU stats
+    ou = analysis['ou_params']
+    if np.isfinite(ou.get('half_life', float('inf'))):
+        ou_hl = f"{ou['half_life']:.1f} days"
+    else:
+        ou_hl = "∞"
+    print(f"  OU Fit: mu={ou['mu']:.5f} sigma={ou['sigma']:.5f} kappa={ou['kappa']:.5f} HL={ou_hl}")
     
     # Spread stats
     stats = analysis['spread_stats']
@@ -329,6 +429,15 @@ def print_analysis(analysis: dict) -> None:
             print(f"    → NOT cointegrated - correlation may be spurious")
         if hl >= 60:
             print(f"    → Half-life too long for practical trading")
+
+    # Suggested parameters
+    recs = analysis['recommendations']
+    ts = recs['time_stop_bars']
+    ts_str = f"{ts} bars" if ts is not None else "n/a"
+    print(f"\n  Suggested Parameters:")
+    print(f"    Entry z: {recs['entry_z']:.2f}")
+    print(f"    Exit z: {recs['exit_z']:.2f}")
+    print(f"    Time stop: {ts_str}")
 
 
 def main():

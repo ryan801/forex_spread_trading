@@ -16,10 +16,10 @@ from pairs_analyzer import MultiPairAnalyzer, SpreadSignal
 # Configuration from environment (will come from ConfigMap/Secrets in k8s)
 POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL', '60'))  # seconds
 LOOKBACK_PERIODS = int(os.environ.get('LOOKBACK_PERIODS', '20'))
-ENTRY_Z_SCORE = float(os.environ.get('ENTRY_Z_SCORE', '2.0'))
-EXIT_Z_SCORE = float(os.environ.get('EXIT_Z_SCORE', '0.5'))
+ENTRY_Z_SCORE = float(os.environ.get('ENTRY_Z_SCORE', '2.3'))
+EXIT_Z_SCORE = float(os.environ.get('EXIT_Z_SCORE', '0.2'))
 TRADE_UNITS = int(os.environ.get('TRADE_UNITS', '1000'))  # Units per leg
-# Logic was backwards - should check if == 'true', not == 'False'
+# Check if == 'true', not == 'False'
 DRY_RUN = os.environ.get('DRY_RUN', 'true').lower() == 'true'
 GRANULARITY = os.environ.get('GRANULARITY', 'H1')  # Candle size for historical data
 MAX_TRADES_PER_DAY = int(os.environ.get('MAX_TRADES_PER_DAY', '1'))
@@ -30,12 +30,12 @@ CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true
 
 
 # Only trading statistically cointegrated pairs
-INSTRUMENTS = ['EUR_USD', 'USD_CHF']
+INSTRUMENTS = ['EUR_JPY', 'GBP_JPY']
 
 # Spread definitions: (pair1, pair2, hedge_ratio)
 # hedge_ratio from cointegration analysis - negative means inverse relationship
 SPREADS = [
-    ('EUR_USD', 'USD_CHF'),   # Cointegrated (p=0.001), inverse correlation
+    ('EUR_JPY', 'GBP_JPY'),   # Cointegrated (p=0.001), inverse correlation
 ]
 
 # Hedge ratios from cointegration analysis
