@@ -27,7 +27,16 @@ class PairsAnalyzer:
     Analyzes the spread between two currency pairs and generates z-score signals
     """
     
-    def __init__(self, pair1: str, pair2: str, lookback: int = 20, entry_z: float = 2.0, exit_z: float = 0.5):
+    def __init__(
+        self,
+        pair1: str,
+        pair2: str,
+        lookback: int = 20,
+        entry_z: float = 2.0,
+        exit_z: float = 0.5,
+        mode: str = "ratio",
+        hedge_ratio: float | None = None,
+    ):
         """
         Args:
             pair1: First currency pair (e.g., "EUR_USD")
@@ -35,12 +44,16 @@ class PairsAnalyzer:
             lookback: Number of periods for moving average/std calculation
             entry_z: Z-score threshold to enter a trade
             exit_z: Z-score threshold to exit a trade (close to mean)
+            mode: "ratio" (price1/price2) or "hedged_spread" (price1 - beta*price2)
+            hedge_ratio: beta to use when mode == "hedged_spread"
         """
         self.pair1 = pair1
         self.pair2 = pair2
         self.lookback = lookback
         self.entry_z = entry_z
         self.exit_z = exit_z
+        self.mode = mode
+        self.hedge_ratio = hedge_ratio if hedge_ratio is not None else 1.0
         
         # Store historical ratios
         self.ratio_history = []
@@ -56,7 +69,9 @@ class PairsAnalyzer:
         return f"{self.pair1}/{self.pair2}"
     
     def calculate_ratio(self, price1: float, price2: float) -> float:
-        """Calculate the ratio between two prices"""
+        """Calculate ratio or hedge-adjusted spread"""
+        if self.mode == "hedged_spread":
+            return price1 - self.hedge_ratio * price2
         if price2 == 0:
             return 0
         return price1 / price2

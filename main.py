@@ -11,6 +11,7 @@ from datetime import datetime
 
 from oanda_client import OandaClient
 from pairs_analyzer import MultiPairAnalyzer, SpreadSignal
+from cointegration_analyzer import CointegrationAnalyzer
 
 
 # Configuration from environment (will come from ConfigMap/Secrets in k8s)
@@ -57,6 +58,8 @@ class TradingBot:
         
         self.trades_today = 0
         
+        # Pull fresh spread recommendations (hedge ratios, entry/exit z) at startup
+        self.spread_configs = self.build_spread_configs()
         self.analyzer = MultiPairAnalyzer()
         
         # Track open spread positions
@@ -65,18 +68,78 @@ class TradingBot:
         
         # Set up spread analyzers
         for pair1, pair2 in SPREADS:
+            spread_name = f"{pair1}/{pair2}"
+            cfg = self.spread_configs.get(spread_name, {})
             self.analyzer.add_spread(
                 pair1, pair2,
                 lookback=LOOKBACK_PERIODS,
-                entry_z=ENTRY_Z_SCORE,
-                exit_z=EXIT_Z_SCORE
+                entry_z=cfg.get('entry_z', ENTRY_Z_SCORE),
+                exit_z=cfg.get('exit_z', EXIT_Z_SCORE),
+                mode=cfg.get('mode', 'ratio'),
+                hedge_ratio=cfg.get('hedge_ratio', HEDGE_RATIOS.get(spread_name, 1.0))
             )
         
         print("[INIT] Bot initialized")
         print(f"[INIT] Tracking spreads: {[f'{p1}/{p2}' for p1, p2 in SPREADS]}")
-        print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}")
+        print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, default entry_z={ENTRY_Z_SCORE}, default exit_z={EXIT_Z_SCORE}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
         print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips, Close on shutdown: {CLOSE_ON_SHUTDOWN}")
+    
+    # =========================================================================
+    # Build spread-specific configs from the cointegration analyzer
+    # =========================================================================
+    def build_spread_configs(self) -> dict:
+        """
+        Use CointegrationAnalyzer to fetch recommended hedge ratios and z-score
+        thresholds so we don't have to tune them manually.
+        """
+        configs = {}
+        try:
+            analyzer = CointegrationAnalyzer()
+        except Exception as e:
+            print(f"[INIT] Could not build spread configs (cointegration analyzer failed): {e}")
+            return configs
+
+        print("[INIT] Fetching spread recommendations (hedge ratios, entry/exit z)...")
+        for pair1, pair2 in SPREADS:
+            name = f"{pair1}/{pair2}"
+            try:
+                analysis = analyzer.analyze_pair(pair1, pair2)
+            except Exception as e:
+                print(f"[INIT] {name}: analysis failed: {e}")
+                continue
+
+            if analysis.get('error'):
+                print(f"[INIT] {name}: {analysis['error']} - using defaults")
+                continue
+
+            recs = analysis.get('recommendations', {})
+            hedge = analysis.get('kalman_beta_latest')
+            if hedge is None:
+                hedge = analysis.get('hedge_ratio', HEDGE_RATIOS.get(name, 1.0))
+            if hedge is None:
+                hedge = 1.0
+
+            entry_z = recs.get('entry_z', ENTRY_Z_SCORE)
+            exit_z = recs.get('exit_z', EXIT_Z_SCORE)
+            time_stop = recs.get('time_stop_bars')
+            hl = analysis.get('half_life_days')
+
+            configs[name] = {
+                'entry_z': entry_z,
+                'exit_z': exit_z,
+                'time_stop_bars': time_stop,
+                'hedge_ratio': hedge,
+                'mode': 'hedged_spread'
+            }
+            # Update global hedge ratios so sizing logic picks it up
+            HEDGE_RATIOS[name] = hedge
+
+            hl_str = f"{hl:.1f}d" if hl and hl != float('inf') else "inf"
+            print(f"[INIT] {name}: entry_z={entry_z:.2f}, exit_z={exit_z:.2f}, hedge={hedge:.4f}, HL~{hl_str}, time_stop={time_stop}")
+
+        return configs
+    # =========================================================================
     
     # =========================================================================
     # Reconcile positions from OANDA on startup
