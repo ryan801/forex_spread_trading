@@ -20,7 +20,7 @@ primary_region = "ord"
   
   # Safety
   DRY_RUN = "false"
-  CLOSE_ON_SHUTDOWN = "true"
+  CLOSE_ON_SHUTDOWN = "false"
 
 [processes]
   app = "python -u main.py"
