@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY oanda_client.py .
 COPY pairs_analyzer.py .
+COPY cointegration_analyzer.py .
 COPY main.py .
 
 RUN useradd -m -u 1001 botuser
