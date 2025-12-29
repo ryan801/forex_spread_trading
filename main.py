@@ -31,7 +31,7 @@ CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true
 
 
 # Only trading statistically cointegrated pairs
-INSTRUMENTS = ['EUR_JPY', 'GBP_JPY']
+INSTRUMENTS = ['EUR_JPY', 'GBP_JPY', 'EUR_USD', 'GBP_USD']
 
 # Spread definitions: (pair1, pair2, hedge_ratio)
 # hedge_ratio from cointegration analysis - negative means inverse relationship
