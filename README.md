@@ -78,7 +78,7 @@ Edit `k8s/secret.yaml` and replace the placeholders:
 ```yaml
 stringData:
   OANDA_API_KEY: "your-actual-api-key"
-  OANDA_ACCOUNT_ID: "101-001-12345678-001"
+  OANDA_ACCOUNT_ID: "your-account-id"
 ```
 
 ### 3. Deploy to OpenShift
