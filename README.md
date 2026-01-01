@@ -166,3 +166,8 @@ python main.py
 - Create a simple web UI to view status
 - Implement position sizing based on account balance
 - Add stop-loss logic for protection
+
+---
+
+# Disclaimer
+This is for educational purposes and does not claim any ROI or model completeness nor accuracy.
