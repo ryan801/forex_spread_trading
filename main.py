@@ -120,7 +120,7 @@ class TradingBot:
             print(f"[INIT]   • {cfg.pair1}/{cfg.pair2} ({cfg.granularity}) - "
                   f"entry_z={cfg.entry_z}, exit_z={cfg.exit_z}, lookback={cfg.lookback}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
-        print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips")
+        print(f"[INIT] Spread stop-loss: ${SPREAD_MAX_LOSS_USD} combined P&L")
     
     # =========================================================================
     # Warm Up - Load historical data for each spread
