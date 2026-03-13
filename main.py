@@ -26,7 +26,7 @@ from pairs_analyzer import PairsAnalyzer, SpreadSignal
 POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL', '3600'))  # 1 hour default
 TRADE_UNITS = int(os.environ.get('TRADE_UNITS', '10000'))
 DRY_RUN = os.environ.get('DRY_RUN', 'true').lower() == 'true'
-STOP_LOSS_PIPS = float(os.environ.get('STOP_LOSS_PIPS', '150'))
+SPREAD_MAX_LOSS_USD = float(os.environ.get('SPREAD_MAX_LOSS_USD', '200'))
 CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true'
 
 
@@ -104,11 +104,13 @@ class TradingBot:
         for cfg in SPREAD_CONFIGS:
             spread_name = f"{cfg.pair1}/{cfg.pair2}"
             self.analyzers[spread_name] = PairsAnalyzer(
-                cfg.pair1, 
+                cfg.pair1,
                 cfg.pair2,
                 lookback=cfg.lookback,
                 entry_z=cfg.entry_z,
-                exit_z=cfg.exit_z
+                exit_z=cfg.exit_z,
+                mode='hedged_spread',
+                hedge_ratio=cfg.hedge_ratio,
             )
             self.configs[spread_name] = cfg
         
@@ -299,20 +301,18 @@ class TradingBot:
                             print(f"[TRADE {now}] BLOCKED: {pos['instrument']} already has position")
                             return False
         
-        # Calculate beta-weighted position sizes
-        pair1_usd = self.get_usd_value_per_unit(cfg.pair1, prices)
-        pair2_usd = self.get_usd_value_per_unit(cfg.pair2, prices)
-        
-        pair2_adjusted = int(TRADE_UNITS * pair1_usd / pair2_usd)
-        
+        # Use cointegration hedge ratio for position sizing:
+        # pair2_units = hedge_ratio * pair1_units (keeps the spread stationary)
+        pair2_hedge_units = int(TRADE_UNITS * cfg.hedge_ratio)
+
         # Determine trade direction
         # For positive correlation pairs: LONG = buy pair1, sell pair2
         if signal.signal == 'LONG_SPREAD':
             pair1_units = TRADE_UNITS
-            pair2_units = -pair2_adjusted
+            pair2_units = -pair2_hedge_units
         elif signal.signal == 'SHORT_SPREAD':
             pair1_units = -TRADE_UNITS
-            pair2_units = pair2_adjusted
+            pair2_units = pair2_hedge_units
         elif signal.signal == 'CLOSE':
             if spread_name in self.open_positions:
                 pos = self.open_positions[spread_name]
@@ -335,10 +335,10 @@ class TradingBot:
             print(f"[TRADE {now}] DRY RUN - No actual orders placed")
             success = True
         else:
-            result1 = self.client.place_market_order(cfg.pair1, pair1_units, 
-                                                     stop_loss_pips=STOP_LOSS_PIPS)
-            result2 = self.client.place_market_order(cfg.pair2, pair2_units,
-                                                     stop_loss_pips=STOP_LOSS_PIPS)
+            # No per-leg stop-losses: individual stops break the hedge by closing one
+            # leg while leaving the other open. Spread-level stops are used instead.
+            result1 = self.client.place_market_order(cfg.pair1, pair1_units)
+            result2 = self.client.place_market_order(cfg.pair2, pair2_units)
             success = result1 is not None and result2 is not None
             
             if success:
@@ -367,6 +367,70 @@ class TradingBot:
         print(f"[TRADE {now}] {'='*50}\n")
         return success
     
+    # =========================================================================
+    # Monitor open spreads against OANDA's actual positions
+    # =========================================================================
+    def check_leg_closures(self, oanda_map: dict) -> None:
+        """
+        Detect if OANDA closed one leg of a spread externally (e.g., margin call,
+        manual close) and immediately close the surviving leg to avoid unhedged exposure.
+
+        oanda_map: {instrument: net_units} from get_open_positions()
+        """
+        spreads_to_remove = []
+
+        for spread_name, pos in self.open_positions.items():
+            cfg = self.configs[spread_name]
+            pair1_open = cfg.pair1 in oanda_map
+            pair2_open = cfg.pair2 in oanda_map
+
+            if not pair1_open and not pair2_open:
+                print(f"[MONITOR] {spread_name}: both legs closed externally, removing from tracking")
+                spreads_to_remove.append(spread_name)
+            elif not pair1_open and pair2_open:
+                print(f"[MONITOR] {spread_name}: {cfg.pair1} was closed externally — closing {cfg.pair2} to eliminate unhedged exposure")
+                if not DRY_RUN:
+                    self.client.close_position(cfg.pair2)
+                spreads_to_remove.append(spread_name)
+            elif pair1_open and not pair2_open:
+                print(f"[MONITOR] {spread_name}: {cfg.pair2} was closed externally — closing {cfg.pair1} to eliminate unhedged exposure")
+                if not DRY_RUN:
+                    self.client.close_position(cfg.pair1)
+                spreads_to_remove.append(spread_name)
+
+        for spread_name in spreads_to_remove:
+            del self.open_positions[spread_name]
+            self.analyzers[spread_name].update_position_state(exited=True)
+
+    def check_spread_stops(self, oanda_positions: list) -> None:
+        """
+        Close both legs of a spread if the combined unrealized P&L exceeds
+        SPREAD_MAX_LOSS_USD. This replaces per-leg stop-losses.
+        """
+        if not self.open_positions or DRY_RUN:
+            return
+
+        pl_map = {pos['instrument']: pos['unrealized_pl'] for pos in oanda_positions}
+
+        spreads_to_close = []
+        for spread_name, pos in self.open_positions.items():
+            cfg = self.configs[spread_name]
+            pl1 = pl_map.get(cfg.pair1, 0.0)
+            pl2 = pl_map.get(cfg.pair2, 0.0)
+            total_pl = pl1 + pl2
+
+            if total_pl <= -SPREAD_MAX_LOSS_USD:
+                print(f"[STOP] {spread_name}: combined P&L ${total_pl:.2f} hit spread stop "
+                      f"(limit -${SPREAD_MAX_LOSS_USD:.2f}). Closing both legs.")
+                spreads_to_close.append(spread_name)
+
+        for spread_name in spreads_to_close:
+            cfg = self.configs[spread_name]
+            self.client.close_position(cfg.pair1)
+            self.client.close_position(cfg.pair2)
+            del self.open_positions[spread_name]
+            self.analyzers[spread_name].update_position_state(exited=True)
+
     # =========================================================================
     # Get current prices for all instruments
     # =========================================================================
@@ -428,11 +492,24 @@ class TradingBot:
     def run_once(self) -> None:
         """Run a single iteration of the bot logic"""
         prices = self.get_current_prices()
-        
+
         if len(prices) < len(INSTRUMENTS):
             print(f"[WARN] Missing prices for some instruments")
             return
-        
+
+        # Check OANDA's actual positions to detect externally-closed legs and
+        # enforce spread-level stops. Do this before evaluating new signals.
+        if self.open_positions and not DRY_RUN:
+            oanda_positions = self.client.get_open_positions()
+            if oanda_positions is not None:
+                oanda_map = {
+                    pos['instrument']: pos['net_units']
+                    for pos in oanda_positions
+                    if pos['net_units'] != 0
+                }
+                self.check_leg_closures(oanda_map)
+                self.check_spread_stops(oanda_positions)
+
         # Check each spread
         for spread_name, analyzer in self.analyzers.items():
             cfg = self.configs[spread_name]
