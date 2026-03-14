@@ -7,7 +7,7 @@ Supports multiple spreads with different timeframes:
 - EUR_USD/GBP_USD on Daily
 """
 
-print("+++ forex bot startup reached +++", flush=True)
+print("+++ forex spread bot v0.7 deployed +++", flush=True)
 
 import os
 import sys
