@@ -16,7 +16,7 @@ primary_region = "ord"
   TRADE_UNITS = "10000"
   
   # Risk management
-  STOP_LOSS_PIPS = "150"
+  SPREAD_MAX_LOSS_USD = "200"
   
   # Safety
   DRY_RUN = "false"
