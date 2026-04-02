@@ -13,7 +13,7 @@ primary_region = "ord"
   POLL_INTERVAL = "3600"
   
   # Position sizing
-  TRADE_UNITS = "10000"
+  TRADE_UNITS = "20000"
   
   # Risk management
   SPREAD_MAX_LOSS_USD = "200"
