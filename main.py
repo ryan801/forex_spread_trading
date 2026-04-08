@@ -446,8 +446,8 @@ class TradingBot:
             if price_data:
                 prices[inst] = price_data['mid']
         
-        # Also fetch USD crosses for position sizing
-        for base in ['EUR', 'GBP', 'JPY']:
+        # Also fetch USD crosses for position sizing (JPY crosses use EUR_USD/GBP_USD)
+        for base in ['EUR', 'GBP']:
             usd_pair = f"{base}_USD"
             if usd_pair not in prices:
                 price_data = self.client.get_current_price(usd_pair)
@@ -515,9 +515,11 @@ class TradingBot:
         # Check each spread
         for spread_name, analyzer in self.analyzers.items():
             cfg = self.configs[spread_name]
-            
-            # Only check if appropriate for this timeframe
-            if not self.should_check_spread(cfg):
+
+            # Always evaluate spreads with open positions (needed for exits/stops).
+            # Only throttle by timeframe when looking for new entries.
+            has_open_position = spread_name in self.open_positions
+            if not has_open_position and not self.should_check_spread(cfg):
                 continue
             
             # Get current prices for this spread
