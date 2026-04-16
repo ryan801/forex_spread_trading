@@ -535,6 +535,11 @@ class TradingBot:
             signal = analyzer.get_signal(prices[cfg.pair1], prices[cfg.pair2])
             
             # Act on actionable signals
+            print(f"[DEBUG] TRADE_UNITS={TRADE_UNITS}")
+            print(f"[DEBUG] pair1_usd={pair1_usd:.6f} pair2_usd={pair2_usd:.6f}")
+            print(f"[DEBUG] hedge_ratio={cfg.hedge_ratio}")
+            print(f"[DEBUG] pair1_target={pair1_target_units} pair2_target={pair2_target_units}")
+            print(f"[DEBUG] final pair1_units={pair1_units} pair2_units={pair2_units}")
             if signal.signal in ['LONG_SPREAD', 'SHORT_SPREAD', 'CLOSE']:
                 self.execute_spread_trade(spread_name, signal, prices)
         
