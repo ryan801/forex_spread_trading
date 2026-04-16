@@ -10,6 +10,8 @@ from typing import Optional
 
 class OandaClient:
     """Client for interacting with OANDA's REST API"""
+
+    REQUEST_TIMEOUT = 10
     
     def __init__(self, api_key: str = None, account_id: str = None, practice: bool = True):
         self.api_key = api_key or os.environ.get('OANDA_API_KEY')
@@ -39,7 +41,7 @@ class OandaClient:
         params = {"instruments": instrument}
         
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             
@@ -81,7 +83,7 @@ class OandaClient:
         }
         
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            response = requests.get(url, headers=self.headers, params=params, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             
@@ -108,7 +110,7 @@ class OandaClient:
         url = f"{self.base_url}/v3/accounts/{self.account_id}/summary"
         
         try:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             
@@ -182,7 +184,7 @@ class OandaClient:
                 print(f"[ORDER] Setting stop-loss at {stop_price} ({stop_loss_pips} pips)")
         
         try:
-            response = requests.post(url, headers=self.headers, json=order_data)
+            response = requests.post(url, headers=self.headers, json=order_data, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             
@@ -209,7 +211,7 @@ class OandaClient:
         url = f"{self.base_url}/v3/accounts/{self.account_id}/openPositions"
         
         try:
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
             
@@ -244,7 +246,7 @@ class OandaClient:
         }
         
         try:
-            response = requests.put(url, headers=self.headers, json=close_data)
+            response = requests.put(url, headers=self.headers, json=close_data, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
