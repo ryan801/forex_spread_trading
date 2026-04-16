@@ -157,9 +157,6 @@ class TradingBot:
             analyzer = self.analyzers[spread_name]
             loaded = analyzer.load_historical_ratios(candles1, candles2)
             print(f"[WARMUP] ✓ Loaded {loaded} historical ratios")
-            
-            # Initialize last check time
-            self.last_check[cfg.granularity] = datetime.utcnow()
         
         print("\n[WARMUP] Complete")
         return success
@@ -313,7 +310,7 @@ class TradingBot:
             print(f"[TRADE {now}] Cannot compute USD values for {spread_name}, skipping")
             return False
         pair1_target_units = int(TRADE_UNITS / pair1_usd)
-        pair2_target_units = int(TRADE_UNITS / pair2_usd)
+        pair2_target_units = int((TRADE_UNITS * cfg.hedge_ratio) / pair2_usd)
 
         # Determine trade direction
         # For positive correlation pairs: LONG = buy pair1, sell pair2
