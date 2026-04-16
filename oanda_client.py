@@ -7,11 +7,10 @@ import os
 import requests
 from typing import Optional
 
+REQUEST_TIMEOUT = 10
 
 class OandaClient:
     """Client for interacting with OANDA's REST API"""
-
-    REQUEST_TIMEOUT = 10
     
     def __init__(self, api_key: str = None, account_id: str = None, practice: bool = True):
         self.api_key = api_key or os.environ.get('OANDA_API_KEY')
