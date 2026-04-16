@@ -306,16 +306,19 @@ class TradingBot:
         # both legs carry the same dollar exposure regardless of price differences.
         pair1_usd = self.get_usd_value_per_unit(cfg.pair1, prices)
         pair2_usd = self.get_usd_value_per_unit(cfg.pair2, prices)
+        
         print(f"[DEBUG] TRADE_UNITS={TRADE_UNITS}")
         print(f"[DEBUG] pair1_usd={pair1_usd:.6f} pair2_usd={pair2_usd:.6f}")
         print(f"[DEBUG] hedge_ratio={cfg.hedge_ratio}")
-        print(f"[DEBUG] pair1_target={pair1_target_units} pair2_target={pair2_target_units}")
-        print(f"[DEBUG] final pair1_units={pair1_units} pair2_units={pair2_units}")
+        
         if pair1_usd <= 0 or pair2_usd <= 0:
             print(f"[TRADE {now}] Cannot compute USD values for {spread_name}, skipping")
             return False
+
         pair1_target_units = int(TRADE_UNITS / pair1_usd)
         pair2_target_units = int((TRADE_UNITS * cfg.hedge_ratio) / pair2_usd)
+
+        print(f"[DEBUG] pair1_target={pair1_target_units} pair2_target={pair2_target_units}")
 
         # Determine trade direction
         # For positive correlation pairs: LONG = buy pair1, sell pair2
