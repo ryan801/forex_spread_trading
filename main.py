@@ -303,18 +303,26 @@ class TradingBot:
                             print(f"[TRADE {now}] BLOCKED: {pos['instrument']} already has position")
                             return False
         
-        # Use cointegration hedge ratio for position sizing:
-        # pair2_units = hedge_ratio * pair1_units (keeps the spread stationary)
-        pair2_hedge_units = int(TRADE_UNITS * cfg.hedge_ratio)
+        # Dollar-equivalent position sizing:
+        # TRADE_UNITS is treated as a USD notional target per leg.
+        # Units for each leg are derived from the current USD value per unit so
+        # both legs carry the same dollar exposure regardless of price differences.
+        pair1_usd = self.get_usd_value_per_unit(cfg.pair1, prices)
+        pair2_usd = self.get_usd_value_per_unit(cfg.pair2, prices)
+        if pair1_usd <= 0 or pair2_usd <= 0:
+            print(f"[TRADE {now}] Cannot compute USD values for {spread_name}, skipping")
+            return False
+        pair1_target_units = int(TRADE_UNITS / pair1_usd)
+        pair2_target_units = int(TRADE_UNITS / pair2_usd)
 
         # Determine trade direction
         # For positive correlation pairs: LONG = buy pair1, sell pair2
         if signal.signal == 'LONG_SPREAD':
-            pair1_units = TRADE_UNITS
-            pair2_units = -pair2_hedge_units
+            pair1_units = pair1_target_units
+            pair2_units = -pair2_target_units
         elif signal.signal == 'SHORT_SPREAD':
-            pair1_units = -TRADE_UNITS
-            pair2_units = pair2_hedge_units
+            pair1_units = -pair1_target_units
+            pair2_units = pair2_target_units
         elif signal.signal == 'CLOSE':
             if spread_name in self.open_positions:
                 pos = self.open_positions[spread_name]
