@@ -315,8 +315,8 @@ class TradingBot:
             print(f"[TRADE {now}] Cannot compute USD values for {spread_name}, skipping")
             return False
 
-        pair1_target_units = int(TRADE_UNITS / pair1_usd)
-        pair2_target_units = int((TRADE_UNITS * cfg.hedge_ratio) / pair2_usd)
+        pair1_target_units = TRADE_UNITS
+        pair2_target_units = int(TRADE_UNITS * hedge_ratio)
 
         print(f"[DEBUG] pair1_target={pair1_target_units} pair2_target={pair2_target_units}")
 
