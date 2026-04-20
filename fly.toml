@@ -19,7 +19,7 @@ primary_region = "ord"
   SPREAD_MAX_LOSS_USD = "200"
   
   # Safety
-  DRY_RUN = "true"
+  DRY_RUN = "false"
   CLOSE_ON_SHUTDOWN = "false"
 
 [processes]
