@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spread Manager</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --bg-card: #1a1a1a;
+      --bg-input: #141414;
+      --bg-hover: #222;
+      --border: #2a2a2a;
+      --border-focus: #444;
+      --text: #e8e8e8;
+      --text-muted: #888;
+      --text-dim: #555;
+      --blue: #3b82f6;
+      --blue-bg: #1e3a5f;
+      --blue-text: #93c5fd;
+      --green-bg: #14532d;
+      --green-text: #86efac;
+      --red-bg: #450a0a;
+      --red-text: #fca5a5;
+      --amber-bg: #451a03;
+      --amber-text: #fcd34d;
+      --radius: 8px;
+      --radius-sm: 5px;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; }
+
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 2rem; }
+
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; gap: 0; }
+    .tab {
+      font-size: 13px; padding: 9px 18px; cursor: pointer;
+      border: none; background: none; color: var(--text-muted);
+      border-bottom: 2px solid transparent; transition: color 0.15s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--blue-text); border-bottom-color: var(--blue); }
+
+    .section { margin-bottom: 2rem; }
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.6rem;
+    }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.25rem;
+    }
+
+    textarea, input {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: var(--mono); font-size: 12px; outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea { width: 100%; padding: 10px 12px; resize: vertical; min-height: 200px; line-height: 1.6; }
+    textarea:focus, input:focus { border-color: var(--border-focus); }
+
+    button {
+      font-family: inherit; cursor: pointer; font-size: 12px;
+      border-radius: var(--radius-sm); transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn {
+      padding: 6px 14px; border: 1px solid var(--border);
+      background: transparent; color: var(--text);
+    }
+    .btn:hover { background: var(--bg-hover); }
+    .btn.primary { border-color: var(--blue); color: var(--blue-text); }
+    .btn.primary:hover { background: var(--blue-bg); }
+    .btn.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue-text); }
+    .btn.danger:hover { color: var(--red-text); border-color: var(--red-bg); }
+    .btn.icon { padding: 4px 8px; border: none; background: none; color: var(--text-dim); font-size: 16px; }
+    .btn.icon:hover { color: var(--red-text); }
+
+    .notice {
+      font-size: 12px; line-height: 1.7; padding: 9px 13px;
+      background: var(--blue-bg); border: 1px solid #1e40af;
+      border-radius: var(--radius-sm); color: var(--blue-text); margin-bottom: 1rem;
+    }
+    .notice code { font-family: var(--mono); font-size: 11px; }
+
+    .tag {
+      font-size: 11px; font-weight: 600; padding: 2px 8px;
+      border-radius: 4px; white-space: nowrap;
+    }
+    .tag.pass { background: var(--green-bg); color: var(--green-text); }
+    .tag.fail { background: var(--red-bg); color: var(--red-text); }
+    .tag.warn { background: var(--amber-bg); color: var(--amber-text); }
+
+    .spread-row {
+      display: flex; align-items: center; gap: 12px; padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .spread-row:last-child { border-bottom: none; }
+
+    .spread-name { min-width: 155px; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+    .spread-name .sub { font-size: 11px; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+    .spread-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; flex: 1; }
+
+    .stats { display: flex; gap: 16px; flex-wrap: wrap; }
+    .stat { display: flex; flex-direction: column; }
+    .stat .lbl { font-size: 10px; color: var(--text-dim); }
+    .stat .val { font-size: 13px; color: var(--text); font-family: var(--mono); }
+
+    .cmd-box {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 14px;
+      font-family: var(--mono); font-size: 12px; color: var(--text);
+      white-space: pre-wrap; word-break: break-all; line-height: 1.7;
+    }
+
+    .selected-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 13px; background: var(--bg-input);
+      border-radius: var(--radius-sm); margin-bottom: 6px;
+    }
+    .selected-item .name { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+    .selected-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+    .pair-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .pair-input-row input { flex: 1; padding: 7px 10px; font-size: 13px; }
+    .pair-input-row .sep { color: var(--text-dim); font-size: 14px; }
+
+    .warning-box {
+      font-size: 13px; color: var(--amber-text); background: var(--amber-bg);
+      border: 1px solid #78350f; border-radius: var(--radius-sm);
+      padding: 8px 12px; margin-bottom: 6px;
+    }
+
+    .empty { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 13px; }
+
+    .copy-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .copy-feedback { font-size: 12px; color: var(--green-text); opacity: 0; transition: opacity 0.3s; }
+    .copy-feedback.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Spread manager</h1>
+  <p class="subtitle">Paste cointegration output → pick spreads → generate flyctl command.</p>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('analyze')">1. Analyze pairs</button>
+    <button class="tab" onclick="switchTab('select')">2. Select spreads</button>
+    <button class="tab" onclick="switchTab('deploy')">3. Deploy</button>
+  </div>
+
+  <div id="tab-analyze">
+    <div class="notice">
+      Run <code>python cointegration_analyzer.py</code> in your terminal, then paste the full output below.
+    </div>
+    <div class="section">
+      <div class="section-label">Cointegration output</div>
+      <textarea id="coint-paste" placeholder="Paste full cointegration_analyzer.py output here..." oninput="parseOutput()"></textarea>
+    </div>
+    <div id="parse-results"></div>
+  </div>
+
+  <div id="tab-select" style="display:none;"><div id="select-content"></div></div>
+  <div id="tab-deploy" style="display:none;"><div id="deploy-content"></div></div>
+</div>
+
+<script>
+let parsedSpreads = [];
+let selectedSpreads = [];
+let manualPairs = [{ p1: '', p2: '' }];
+
+function switchTab(name) {
+  ['analyze','select','deploy'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', ['analyze','select','deploy'][i] === name);
+  });
+  if (name === 'select') renderSelectTab();
+  if (name === 'deploy') renderDeployTab();
+}
+
+function parseOutput() {
+  const raw = document.getElementById('coint-paste').value;
+  parsedSpreads = [];
+
+  // Pull summary scores
+  const summaryScores = {};
+  const summaryMatch = raw.match(/SUMMARY RANKING([\s\S]*?)(?:={3,}\s*\n\s*RECOMMENDATIONS|$)/i);
+  if (summaryMatch) {
+    summaryMatch[1].split('\n').forEach(line => {
+      const m = line.match(/([A-Z]{3})\/([A-Z]{3})\s+[\S]\s+[\d.∞]+d?\s+[-\d.]+\s+(\d+)/u);
+      if (m) {
+        const key = m[1] + '/' + m[2];
+        if (!summaryScores[key]) summaryScores[key] = [];
+        summaryScores[key].push(parseInt(m[3]));
+      }
+    });
+  }
+  const scoreConsumed = {};
+
+  // Match === PAIR === block + its data
+  const pairBlockRe = /={3,}\s*\n\s{0,8}([A-Z]{3}_[A-Z]{3}\/[A-Z]{3}_[A-Z]{3})\s*\n\s*={3,}([\s\S]*?)(?=={3,}\s*\n\s{0,8}[A-Z]{3}_[A-Z]{3}\/[A-Z]{3}_[A-Z]{3}|={3,}\s*\n\s*SUMMARY|$)/g;
+
+  let m;
+  while ((m = pairBlockRe.exec(raw)) !== null) {
+    const [pair1, pair2] = m[1].split('/');
+    const data = m[2];
+    const get = re => { const x = data.match(re); return x ? x[1] : null; };
+
+    const corrStr = get(/Correlation:\s*([-\d.]+)/);
+    if (!corrStr) continue;
+
+    const cointStr  = get(/Cointegrated:\s*\S+\s*(YES|NO)/i);
+    const pvalStr   = get(/p-value:\s*([\d.]+)/);
+    const hlStr     = get(/Mean Reversion Half-Life:\s*([\d.]+)/);
+    const kalmanStr = get(/Kalman hedge ratio[^:]*last=([-\d.]+)/);
+    const hedgeStr  = get(/OLS hedge ratio[^:]*:\s*([-\d.]+)/);
+    const entryStr  = get(/Entry z:\s*([\d.]+)/);
+    const exitStr   = get(/Exit z:\s*([\d.]+)/);
+    const kappaRaw  = get(/kappa=([-\d.]+|nan)/i);
+    const kappa     = (kappaRaw && kappaRaw !== 'nan') ? parseFloat(kappaRaw) : null;
+
+    const shortKey = pair1.slice(0,3) + '/' + pair2.slice(0,3);
+    if (!scoreConsumed[shortKey]) scoreConsumed[shortKey] = 0;
+    const score = (summaryScores[shortKey] || [])[scoreConsumed[shortKey]++] ?? 0;
+
+    parsedSpreads.push({
+      pair1, pair2,
+      cointegrated: cointStr ? cointStr.toUpperCase() === 'YES' : false,
+      halfLife:     hlStr ? parseFloat(hlStr) : null,
+      corr:         parseFloat(corrStr),
+      hedgeRatio:   kalmanStr ? parseFloat(kalmanStr) : (hedgeStr ? parseFloat(hedgeStr) : 1.0),
+      pValue:       pvalStr ? parseFloat(pvalStr) : null,
+      entryZ:       entryStr ? parseFloat(entryStr) : 2.3,
+      exitZ:        exitStr ? parseFloat(exitStr) : 0.2,
+      kappa, score
+    });
+  }
+
+  parsedSpreads.sort((a, b) => b.score - a.score);
+
+  const el = document.getElementById('parse-results');
+  if (!parsedSpreads.length) {
+    el.innerHTML = raw.trim().length > 30
+      ? '<div class="empty">Could not parse any pairs. Make sure you paste the full output including the DETAILED RESULTS section.</div>'
+      : '';
+    return;
+  }
+
+  let html = '<div class="section"><div class="section-label">Parsed ' + parsedSpreads.length + ' pairs</div><div class="card">';
+  parsedSpreads.forEach((s, i) => {
+    const hlStr = s.halfLife ? s.halfLife.toFixed(1) + 'd' : '∞';
+    const hlOk  = s.halfLife && s.halfLife >= 5 && s.halfLife <= 40;
+    const isSel = selectedSpreads.some(x => x.pair1 === s.pair1 && x.pair2 === s.pair2);
+
+    html += '<div class="spread-row">'
+          + '<div class="spread-name">' + s.pair1 + '<div class="sub">× ' + s.pair2 + '</div></div>'
+          + '<div style="flex:1;">'
+          + '<div class="spread-tags" style="margin-bottom:8px;">'
+          + (s.cointegrated ? '<span class="tag pass">cointegrated</span>' : '<span class="tag fail">not cointegrated</span>')
+          + (hlOk ? '<span class="tag pass">HL ' + hlStr + '</span>' : '<span class="tag warn">HL ' + hlStr + '</span>')
+          + (s.kappa !== null ? (s.kappa > 0 ? '<span class="tag pass">κ &gt; 0</span>' : '<span class="tag fail">κ ≤ 0</span>') : '')
+          + '</div>'
+          + '<div class="stats">'
+          + '<div class="stat"><span class="lbl">corr</span><span class="val">' + s.corr.toFixed(3) + '</span></div>'
+          + '<div class="stat"><span class="lbl">p-value</span><span class="val">' + (s.pValue !== null ? s.pValue.toFixed(4) : '—') + '</span></div>'
+          + '<div class="stat"><span class="lbl">hedge (Kalman)</span><span class="val">' + s.hedgeRatio.toFixed(4) + '</span></div>'
+          + '<div class="stat"><span class="lbl">entry z</span><span class="val">' + s.entryZ.toFixed(2) + '</span></div>'
+          + '<div class="stat"><span class="lbl">exit z</span><span class="val">' + s.exitZ.toFixed(2) + '</span></div>'
+          + '<div class="stat"><span class="lbl">score</span><span class="val">' + s.score + '</span></div>'
+          + '</div></div>'
+          + '<button class="btn ' + (isSel ? 'active' : 'primary') + '" onclick="toggleSpread(' + i + ')">' + (isSel ? '✓ selected' : '+ select') + '</button>'
+          + '</div>';
+  });
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function toggleSpread(idx) {
+  const s = parsedSpreads[idx];
+  const ei = selectedSpreads.findIndex(x => x.pair1 === s.pair1 && x.pair2 === s.pair2);
+  if (ei >= 0) selectedSpreads.splice(ei, 1);
+  else selectedSpreads.push({...s});
+  parseOutput();
+}
+
+function removeSelected(idx) {
+  selectedSpreads.splice(idx, 1);
+  parseOutput();
+  renderSelectTab();
+}
+
+function renderSelectTab() {
+  const el = document.getElementById('select-content');
+  let html = '';
+
+  if (selectedSpreads.length) {
+    html += '<div class="section"><div class="section-label">Selected spreads (' + selectedSpreads.length + ')</div>';
+    selectedSpreads.forEach((s, i) => {
+      html += '<div class="selected-item">'
+            + '<div><div class="name">' + s.pair1 + ' × ' + s.pair2 + '</div>'
+            + '<div class="meta">hedge: ' + s.hedgeRatio.toFixed(4) + ' · entry z: ' + s.entryZ.toFixed(2) + ' · exit z: ' + s.exitZ.toFixed(2) + ' · HL: ' + (s.halfLife ? s.halfLife.toFixed(1) + 'd' : '∞') + '</div></div>'
+            + '<button class="btn icon" onclick="removeSelected(' + i + ')" title="Remove">×</button>'
+            + '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div class="section"><div class="section-label">Add pair manually</div>'
+        + '<div class="notice">Manual pairs use hedge ratio 1.0 and default z-score params. Run the analyzer first for accurate values.</div>';
+  manualPairs.forEach((p, i) => {
+    html += '<div class="pair-input-row">'
+          + '<input id="mp1_' + i + '" value="' + p.p1 + '" placeholder="AUD_JPY" oninput="manualPairs[' + i + '].p1=this.value.toUpperCase()" />'
+          + '<span class="sep">×</span>'
+          + '<input id="mp2_' + i + '" value="' + p.p2 + '" placeholder="NZD_JPY" oninput="manualPairs[' + i + '].p2=this.value.toUpperCase()" />'
+          + '<button class="btn primary" onclick="addManualPair(' + i + ')">+ add</button>'
+          + (i > 0 ? '<button class="btn icon" onclick="removeManualRow(' + i + ')">×</button>' : '')
+          + '</div>';
+  });
+  html += '<button class="btn" onclick="addManualRow()" style="margin-top:4px;">+ another pair</button></div>';
+  el.innerHTML = html;
+}
+
+function addManualPair(idx) {
+  const p = manualPairs[idx];
+  if (!p.p1 || !p.p2) { alert('Enter both pair symbols'); return; }
+  if (!p.p1.includes('_') || !p.p2.includes('_')) { alert('Use OANDA format: XXX_YYY'); return; }
+  if (selectedSpreads.some(x => x.pair1 === p.p1 && x.pair2 === p.p2)) { alert('Already selected'); return; }
+  selectedSpreads.push({ pair1: p.p1, pair2: p.p2, hedgeRatio: 1.0, entryZ: 2.3, exitZ: 0.2, halfLife: null, corr: null, pValue: null, cointegrated: false, kappa: null, score: 0 });
+  manualPairs[idx] = { p1: '', p2: '' };
+  renderSelectTab();
+}
+
+function addManualRow() { manualPairs.push({ p1: '', p2: '' }); renderSelectTab(); }
+function removeManualRow(i) { manualPairs.splice(i, 1); renderSelectTab(); }
+
+function renderDeployTab() {
+  const el = document.getElementById('deploy-content');
+  if (!selectedSpreads.length) {
+    el.innerHTML = '<div class="empty">No spreads selected. Go to step 2 and pick at least one.</div>';
+    return;
+  }
+
+  const spreadsJson = JSON.stringify(selectedSpreads.map(s => ({
+    pair1: s.pair1, pair2: s.pair2,
+    hedge_ratio: parseFloat(s.hedgeRatio.toFixed(4)),
+    entry_z: parseFloat(s.entryZ.toFixed(2)),
+    exit_z: parseFloat(s.exitZ.toFixed(2))
+  })));
+  const flyCmd = `flyctl secrets set SPREADS_CONFIG='${spreadsJson}' --app forex-spread-trading`;
+
+  const fallback = '_DEFAULT_SPREADS_CONFIG = [\n'
+    + selectedSpreads.map(s =>
+        `    {"pair1": "${s.pair1}", "pair2": "${s.pair2}", "hedge_ratio": ${s.hedgeRatio.toFixed(4)}, "entry_z": ${s.entryZ.toFixed(2)}, "exit_z": ${s.exitZ.toFixed(2)}},`
+      ).join('\n')
+    + '\n]';
+
+  let warnings = [];
+  selectedSpreads.forEach(s => {
+    if (!s.cointegrated) warnings.push(s.pair1 + '/' + s.pair2 + ': did not pass Engle-Granger cointegration test (p=' + (s.pValue ? s.pValue.toFixed(4) : '?') + ').');
+    if (s.halfLife && (s.halfLife < 5 || s.halfLife > 40)) warnings.push(s.pair1 + '/' + s.pair2 + ': half-life ' + s.halfLife.toFixed(1) + 'd is outside ideal 5–40d window.');
+    if (s.kappa !== null && s.kappa <= 0) warnings.push(s.pair1 + '/' + s.pair2 + ': negative kappa — may not be mean-reverting.');
+  });
+
+  let html = '';
+  if (warnings.length) {
+    html += '<div class="section"><div class="section-label">Warnings</div>';
+    warnings.forEach(w => { html += '<div class="warning-box">' + w + '</div>'; });
+    html += '</div>';
+  }
+
+  html += '<div class="section"><div class="section-label">Step 1 — set spreads config secret</div>'
+        + '<div class="notice">Run this in your terminal. Sets <code>SPREADS_CONFIG</code> as a Fly secret and triggers an automatic redeploy. No code edits needed.</div>'
+        + '<div class="cmd-box" id="flyCmd">' + escHtml(flyCmd) + '</div>'
+        + '<div class="copy-row"><button class="btn primary" onclick="copyText(\'flyCmd\', \'flyCopied\')">Copy command</button><span class="copy-feedback" id="flyCopied">Copied!</span></div>'
+        + '</div>';
+
+  html += '<div class="section"><div class="section-label">Step 2 — update fallback in main.py (optional)</div>'
+        + '<div class="notice">Only needed if you want the hardcoded fallback to match. The flyctl command above is all you need for the running bot.</div>'
+        + '<div class="cmd-box" id="mainPy">' + escHtml(fallback) + '</div>'
+        + '<div class="copy-row"><button class="btn" onclick="copyText(\'mainPy\', \'mainCopied\')">Copy snippet</button><span class="copy-feedback" id="mainCopied">Copied!</span></div>'
+        + '</div>';
+
+  html += '<div class="section"><div class="section-label">Selected spreads</div><div class="card">';
+  selectedSpreads.forEach(s => {
+    html += '<div class="spread-row">'
+          + '<div class="spread-name">' + s.pair1 + '<div class="sub">× ' + s.pair2 + '</div></div>'
+          + '<div class="stats">'
+          + (s.cointegrated ? '<span class="tag pass">cointegrated</span>' : '<span class="tag fail">not cointegrated</span>')
+          + '<div class="stat"><span class="lbl">hedge</span><span class="val">' + s.hedgeRatio.toFixed(4) + '</span></div>'
+          + '<div class="stat"><span class="lbl">HL</span><span class="val">' + (s.halfLife ? s.halfLife.toFixed(1) + 'd' : '∞') + '</span></div>'
+          + '<div class="stat"><span class="lbl">entry z</span><span class="val">' + s.entryZ.toFixed(2) + '</span></div>'
+          + '<div class="stat"><span class="lbl">exit z</span><span class="val">' + s.exitZ.toFixed(2) + '</span></div>'
+          + '</div></div>';
+  });
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function copyText(elId, feedbackId) {
+  const text = document.getElementById(elId).innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const fb = document.getElementById(feedbackId);
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  });
+}
+</script>
+</body>
+</html>
