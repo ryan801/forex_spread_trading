@@ -7,7 +7,6 @@ import os
 import requests
 from typing import Optional
 
-REQUEST_TIMEOUT = 10
 
 class OandaClient:
     """Client for interacting with OANDA's REST API"""
@@ -40,7 +39,7 @@ class OandaClient:
         params = {"instruments": instrument}
         
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=REQUEST_TIMEOUT)
+            response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
             data = response.json()
             
@@ -82,7 +81,7 @@ class OandaClient:
         }
         
         try:
-            response = requests.get(url, headers=self.headers, params=params, timeout=REQUEST_TIMEOUT)
+            response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
             data = response.json()
             
@@ -109,7 +108,7 @@ class OandaClient:
         url = f"{self.base_url}/v3/accounts/{self.account_id}/summary"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=REQUEST_TIMEOUT)
+            response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             data = response.json()
             
@@ -183,7 +182,7 @@ class OandaClient:
                 print(f"[ORDER] Setting stop-loss at {stop_price} ({stop_loss_pips} pips)")
         
         try:
-            response = requests.post(url, headers=self.headers, json=order_data, timeout=REQUEST_TIMEOUT)
+            response = requests.post(url, headers=self.headers, json=order_data)
             response.raise_for_status()
             data = response.json()
             
@@ -210,7 +209,7 @@ class OandaClient:
         url = f"{self.base_url}/v3/accounts/{self.account_id}/openPositions"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=REQUEST_TIMEOUT)
+            response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             data = response.json()
             
@@ -219,13 +218,13 @@ class OandaClient:
                 long_units = float(pos['long'].get('units', 0))
                 short_units = float(pos['short'].get('units', 0))
                 
-                # OANDA returns short.units as a negative number already
+                # OANDA returns short_units as positive, need to subtract
                 # Long 1000 = net +1000, Short 1000 = net -1000
                 positions.append({
                     'instrument': pos['instrument'],
                     'long_units': long_units,
                     'short_units': short_units,
-                    'net_units': long_units + short_units,
+                    'net_units': long_units - short_units,
                     'unrealized_pl': float(pos.get('unrealizedPL', 0))
                 })
             
@@ -238,19 +237,37 @@ class OandaClient:
     def close_position(self, instrument: str) -> Optional[dict]:
         """Close all units of a position for an instrument"""
         url = f"{self.base_url}/v3/accounts/{self.account_id}/positions/{instrument}/close"
-        
-        close_data = {
-            "longUnits": "ALL",
-            "shortUnits": "ALL"
-        }
-        
+
+        # OANDA rejects the request with 400 if you send "ALL" for a side that has
+        # zero units. Query first so we only close the side(s) that are actually open.
+        pos_url = f"{self.base_url}/v3/accounts/{self.account_id}/positions/{instrument}"
         try:
-            response = requests.put(url, headers=self.headers, json=close_data, timeout=REQUEST_TIMEOUT)
+            pos_resp = requests.get(pos_url, headers=self.headers)
+            pos_resp.raise_for_status()
+            pos_data = pos_resp.json().get('position', {})
+            long_units = float(pos_data.get('long', {}).get('units', 0))
+            short_units = float(pos_data.get('short', {}).get('units', 0))
+        except requests.RequestException as e:
+            print(f"[ERROR] Failed to fetch position details for {instrument}: {e}")
+            return None
+
+        close_data = {
+            "longUnits":  "ALL" if long_units  > 0 else "NONE",
+            "shortUnits": "ALL" if short_units < 0 else "NONE",
+        }
+
+        # Nothing to close
+        if close_data["longUnits"] == "NONE" and close_data["shortUnits"] == "NONE":
+            print(f"[INFO] No open units for {instrument}, nothing to close")
+            return {}  # Return empty dict (truthy enough to signal "already flat")
+
+        try:
+            response = requests.put(url, headers=self.headers, json=close_data)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
             print(f"[ERROR] Failed to close position for {instrument}: {e}")
-        
+
         return None
     
     def close_all_positions(self) -> int:
