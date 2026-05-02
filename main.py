@@ -357,21 +357,31 @@ class TradingBot:
             result1 = self.client.close_position(signal.pair1)
             result2 = self.client.close_position(signal.pair2)
 
-            leg1_ok = result1 is not None
-            leg2_ok = result2 is not None
-            success = leg1_ok and leg2_ok
-
-            if leg1_ok:
-                print(f"[TRADE {now}] {signal.pair1} closed OK")
+            if result1 is not None:
+                print(f"[TRADE {now}] {signal.pair1} close order accepted")
             else:
-                print(f"[TRADE {now}] FAILED to close {signal.pair1} - CHECK OANDA MANUALLY")
-            if leg2_ok:
-                print(f"[TRADE {now}] {signal.pair2} closed OK")
+                print(f"[TRADE {now}] {signal.pair1} close order rejected/failed - verifying OANDA state...")
+            if result2 is not None:
+                print(f"[TRADE {now}] {signal.pair2} close order accepted")
             else:
-                print(f"[TRADE {now}] FAILED to close {signal.pair2} - CHECK OANDA MANUALLY")
+                print(f"[TRADE {now}] {signal.pair2} close order rejected/failed - verifying OANDA state...")
 
-            if not success:
-                print(f"[TRADE {now}] PARTIAL CLOSE - one or both legs may still be open!")
+            # Ground truth: check what OANDA actually has open right now.
+            # A reject can mean "already flat" (stop-loss fired, manual close, etc.)
+            # Don't rely on the API return value alone to decide state.
+            actual_positions = self.client.get_open_positions() or []
+            still_open = {p['instrument'] for p in actual_positions if p['net_units'] != 0}
+
+            leg1_flat = signal.pair1 not in still_open
+            leg2_flat = signal.pair2 not in still_open
+            success = leg1_flat and leg2_flat
+
+            if not leg1_flat:
+                print(f"[TRADE {now}] {signal.pair1} still open at OANDA - will retry next poll")
+            if not leg2_flat:
+                print(f"[TRADE {now}] {signal.pair2} still open at OANDA - will retry next poll")
+            if success:
+                print(f"[TRADE {now}] Both legs confirmed flat at OANDA")
         else:
             # Entry orders - attach stop-loss
             result1 = self.client.place_market_order(signal.pair1, pair1_units, stop_loss_pips=STOP_LOSS_PIPS)
