@@ -383,9 +383,9 @@ class TradingBot:
             if success:
                 print(f"[TRADE {now}] Both legs confirmed flat at OANDA")
         else:
-            # Entry orders - attach stop-loss
-            result1 = self.client.place_market_order(signal.pair1, pair1_units, stop_loss_pips=STOP_LOSS_PIPS)
-            result2 = self.client.place_market_order(signal.pair2, pair2_units, stop_loss_pips=STOP_LOSS_PIPS)
+            # Entry orders - no per-leg stop-loss (spread hedge is the protection; z-score exit handles risk)
+            result1 = self.client.place_market_order(signal.pair1, pair1_units)
+            result2 = self.client.place_market_order(signal.pair2, pair2_units)
             success = result1 is not None and result2 is not None
 
             if result1 is not None:
