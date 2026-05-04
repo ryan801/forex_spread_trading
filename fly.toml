@@ -26,6 +26,8 @@ primary_region = "ord"
   COINT_P_THRESHOLD = "0.05"
   COINT_LOOPBACK_DAYS = "180"
 
+  ZSCORE_BLOWOUT = "3.5"
+
 [processes]
   app = "python -u main.py"
 

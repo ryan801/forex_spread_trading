@@ -34,6 +34,8 @@ CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true
 COINT_CHECK_INTERVAL_HOURS = int(os.environ.get('COINT_CHECK_INTERVAL_HOURS', '24'))
 COINT_P_THRESHOLD = float(os.environ.get('COINT_P_THRESHOLD', '0.05'))
 COINT_LOOKBACK_DAYS = int(os.environ.get('COINT_LOOKBACK_DAYS', '180'))
+# Z-score beyond this on an open position = spread is blowing out, exit immediately
+ZSCORE_BLOWOUT = float(os.environ.get('ZSCORE_BLOWOUT', '3.5'))
 
 
 # Only trading statistically cointegrated pairs
@@ -86,7 +88,7 @@ class TradingBot:
         
         print("[INIT] Bot initialized")
         print(f"[INIT] Tracking spreads: {[f'{p1}/{p2}' for p1, p2 in SPREADS]}")
-        print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}")
+        print(f"[INIT] Settings: lookback={LOOKBACK_PERIODS}, entry_z={ENTRY_Z_SCORE}, exit_z={EXIT_Z_SCORE}, blowout_z={ZSCORE_BLOWOUT}")
         print(f"[INIT] Trade units: {TRADE_UNITS}, Dry run: {DRY_RUN}")
         print(f"[INIT] Stop-loss: {STOP_LOSS_PIPS} pips, Close on shutdown: {CLOSE_ON_SHUTDOWN}")
     
@@ -470,6 +472,54 @@ class TradingBot:
         
         print("-" * 60)
     
+    def check_zscore_blowout(self, signals: list) -> None:
+        """
+        Fast real-time check run every poll.
+        If the z-score on an open position exceeds ZSCORE_BLOWOUT in the wrong
+        direction, the spread is behaving abnormally — exit immediately rather
+        than waiting for the 24h Engle-Granger check.
+
+        "Wrong direction" means the spread kept moving against the position
+        instead of reverting, i.e. a LONG_SPREAD position with z-score going
+        further negative, or a SHORT_SPREAD with z-score going further positive.
+        """
+        prices = None  # Lazy-fetch only if we need to close
+
+        for sig in signals:
+            spread_name = f"{sig.pair1}/{sig.pair2}"
+
+            if spread_name not in self.open_positions:
+                continue  # Not in a position, nothing to protect
+
+            pos = self.open_positions[spread_name]
+            z = sig.z_score
+            side = 'LONG_SPREAD' if pos['pair1_units'] > 0 else 'SHORT_SPREAD'
+
+            # Check if z-score is blowing out in the wrong direction
+            blowout = (
+                (side == 'LONG_SPREAD'  and z <= -ZSCORE_BLOWOUT) or
+                (side == 'SHORT_SPREAD' and z >=  ZSCORE_BLOWOUT)
+            )
+
+            if blowout:
+                print(f"\n[BLOWOUT] {spread_name}: z={z:+.4f} exceeded ±{ZSCORE_BLOWOUT} threshold on {side}")
+                print(f"[BLOWOUT] Spread is diverging — closing position to limit loss")
+
+                if prices is None:
+                    prices = self.get_current_prices()
+
+                fake_signal = SpreadSignal(
+                    pair1=sig.pair1,
+                    pair2=sig.pair2,
+                    ratio=sig.ratio,
+                    z_score=z,
+                    mean=sig.mean,
+                    std=sig.std,
+                    signal='CLOSE',
+                    timestamp=datetime.utcnow(),
+                )
+                self.execute_spread_trade(fake_signal, prices)
+
     def check_cointegration(self) -> None:
         """
         Re-run the Engle-Granger cointegration test for all active spreads.
@@ -555,13 +605,16 @@ class TradingBot:
         if len(prices) != len(INSTRUMENTS):
             print(f"[WARN] Only got prices for {list(prices.keys())}, expected {INSTRUMENTS}")
             return
-        
+
         # Get signals for all spreads
         signals = self.analyzer.get_all_signals(prices)
-        
+
+        # Fast blowout check — runs every poll, exits immediately if z-score diverges too far
+        self.check_zscore_blowout(signals)
+
         # Print status
         self.print_status(prices, signals)
-        
+
         # Act on signals
         for sig in signals:
             spread_name = f"{sig.pair1}/{sig.pair2}"
