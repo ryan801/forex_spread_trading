@@ -5,7 +5,7 @@ primary_region = "ord"
   dockerfile = "Containerfile"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ CYAN: Updated environment variables for dual spread strategy               │
+# │ Updated environment variables for dual spread strategy               │
 # └─────────────────────────────────────────────────────────────────────────────┘
 [env]
   # Check every hour - the bot will internally decide which spreads to evaluate
@@ -19,8 +19,12 @@ primary_region = "ord"
   SPREAD_MAX_LOSS_USD = "200"
   
   # Safety
-  DRY_RUN = "false"
+  DRY_RUN = "true"
   CLOSE_ON_SHUTDOWN = "true"
+
+  COINT_CHECK_INTERVAL_HOURS = "24"
+  COINT_P_THRESHOLD = "0.05"
+  COINT_LOOPBACK_DAYS = "180"
 
 [processes]
   app = "python -u main.py"

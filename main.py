@@ -7,7 +7,11 @@ import os
 import sys
 import time
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+from statsmodels.tsa.stattools import coint
 
 from oanda_client import OandaClient
 from pairs_analyzer import MultiPairAnalyzer, SpreadSignal
@@ -27,6 +31,9 @@ MAX_OPEN_POSITIONS = int(os.environ.get('MAX_OPEN_POSITIONS', '1'))
 ALLOW_LIVE_TRADES = os.environ.get('ALLOW_LIVE_TRADES', 'false').lower() == 'true'
 STOP_LOSS_PIPS = float(os.environ.get('STOP_LOSS_PIPS', '50'))  # Stop-loss distance in pips
 CLOSE_ON_SHUTDOWN = os.environ.get('CLOSE_ON_SHUTDOWN', 'true').lower() == 'true'
+COINT_CHECK_INTERVAL_HOURS = int(os.environ.get('COINT_CHECK_INTERVAL_HOURS', '24'))
+COINT_P_THRESHOLD = float(os.environ.get('COINT_P_THRESHOLD', '0.05'))
+COINT_LOOKBACK_DAYS = int(os.environ.get('COINT_LOOKBACK_DAYS', '180'))
 
 
 # Only trading statistically cointegrated pairs
@@ -62,6 +69,11 @@ class TradingBot:
         # Track open spread positions
         # Key: spread name, Value: {'pair1_units': X, 'pair2_units': Y}
         self.open_positions = {}
+
+        # Cointegration health tracking
+        # Key: spread name, Value: True if currently considered cointegrated
+        self.spread_cointegrated = {f"{p1}/{p2}": True for p1, p2 in SPREADS}
+        self.last_coint_check: datetime | None = None
         
         # Set up spread analyzers
         for pair1, pair2 in SPREADS:
@@ -383,9 +395,9 @@ class TradingBot:
             if success:
                 print(f"[TRADE {now}] Both legs confirmed flat at OANDA")
         else:
-            # Entry orders - no per-leg stop-loss (spread hedge is the protection; z-score exit handles risk)
-            result1 = self.client.place_market_order(signal.pair1, pair1_units)
-            result2 = self.client.place_market_order(signal.pair2, pair2_units)
+            # Entry orders - attach stop-loss
+            result1 = self.client.place_market_order(signal.pair1, pair1_units, stop_loss_pips=STOP_LOSS_PIPS)
+            result2 = self.client.place_market_order(signal.pair2, pair2_units, stop_loss_pips=STOP_LOSS_PIPS)
             success = result1 is not None and result2 is not None
 
             if result1 is not None:
@@ -458,8 +470,86 @@ class TradingBot:
         
         print("-" * 60)
     
+    def check_cointegration(self) -> None:
+        """
+        Re-run the Engle-Granger cointegration test for all active spreads.
+        If a spread fails, force-close any open position and mark it disabled
+        so the bot won't re-enter until the next passing check.
+
+        Runs on COINT_CHECK_INTERVAL_HOURS cadence, not every poll.
+        """
+        now = datetime.utcnow()
+
+        # Throttle: only run every COINT_CHECK_INTERVAL_HOURS
+        if self.last_coint_check is not None:
+            hours_since = (now - self.last_coint_check).total_seconds() / 3600
+            if hours_since < COINT_CHECK_INTERVAL_HOURS:
+                return
+
+        print(f"\n[COINT] Running cointegration check (lookback={COINT_LOOKBACK_DAYS} daily candles)...")
+        self.last_coint_check = now
+
+        for pair1, pair2 in SPREADS:
+            spread_name = f"{pair1}/{pair2}"
+
+            # Fetch daily candles for both legs
+            candles1 = self.client.get_candles(pair1, granularity='D', count=COINT_LOOKBACK_DAYS)
+            candles2 = self.client.get_candles(pair2, granularity='D', count=COINT_LOOKBACK_DAYS)
+
+            if not candles1 or not candles2:
+                print(f"[COINT] {spread_name}: failed to fetch candles, skipping check")
+                continue
+
+            # Align by matching timestamps
+            closes1 = {c['time'][:10]: c['close'] for c in candles1}
+            closes2 = {c['time'][:10]: c['close'] for c in candles2}
+            common_dates = sorted(set(closes1) & set(closes2))
+
+            if len(common_dates) < 60:
+                print(f"[COINT] {spread_name}: only {len(common_dates)} overlapping days, need 60+, skipping")
+                continue
+
+            s1 = pd.Series([closes1[d] for d in common_dates])
+            s2 = pd.Series([closes2[d] for d in common_dates])
+
+            _, p_value, _ = coint(s1, s2)
+            passed = p_value < COINT_P_THRESHOLD
+            was_cointegrated = self.spread_cointegrated.get(spread_name, True)
+
+            print(f"[COINT] {spread_name}: p={p_value:.4f} ({'PASS' if passed else 'FAIL'}, threshold={COINT_P_THRESHOLD})")
+
+            self.spread_cointegrated[spread_name] = passed
+
+            # If it just failed and we're in a position, close it
+            if not passed and was_cointegrated:
+                print(f"[COINT] {spread_name}: cointegration LOST — forcing position close")
+                if spread_name in self.open_positions:
+                    # Build a minimal signal to drive the existing close path
+                    prices = self.get_current_prices()
+                    fake_signal = SpreadSignal(
+                        pair1=pair1,
+                        pair2=pair2,
+                        ratio=0,
+                        z_score=0,
+                        mean=0,
+                        std=0,
+                        signal='CLOSE',
+                        timestamp=now,
+                    )
+                    self.execute_spread_trade(fake_signal, prices)
+                else:
+                    print(f"[COINT] {spread_name}: no open position, just disabling future entries")
+
+            elif passed and not was_cointegrated:
+                print(f"[COINT] {spread_name}: cointegration RESTORED — re-enabling entries")
+
+        print(f"[COINT] Check complete\n")
+
     def run_once(self) -> None:
         """Run a single iteration of the bot logic"""
+        # Cointegration health check (throttled internally to COINT_CHECK_INTERVAL_HOURS)
+        self.check_cointegration()
+
         # Get current prices
         prices = self.get_current_prices()
         if len(prices) != len(INSTRUMENTS):
@@ -474,7 +564,16 @@ class TradingBot:
         
         # Act on signals
         for sig in signals:
-            if sig.signal in ['LONG_SPREAD', 'SHORT_SPREAD', 'CLOSE']:
+            spread_name = f"{sig.pair1}/{sig.pair2}"
+            is_entry = sig.signal in ['LONG_SPREAD', 'SHORT_SPREAD']
+            is_close = sig.signal == 'CLOSE'
+
+            # Block new entries on spreads that failed cointegration check
+            if is_entry and not self.spread_cointegrated.get(spread_name, True):
+                print(f"[SKIP] {spread_name}: cointegration failed, not entering new position")
+                continue
+
+            if is_entry or is_close:
                 self.execute_spread_trade(sig, prices)
     
     def run(self) -> None:
