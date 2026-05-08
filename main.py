@@ -38,20 +38,49 @@ COINT_LOOKBACK_DAYS = int(os.environ.get('COINT_LOOKBACK_DAYS', '180'))
 ZSCORE_BLOWOUT = float(os.environ.get('ZSCORE_BLOWOUT', '3.5'))
 
 
-# Only trading statistically cointegrated pairs
-INSTRUMENTS = ['EUR_USD', 'USD_CHF']
+# ─────────────────────────────────────────────────────────────────────────────
+# Load spread config from SPREADS_CONFIG env var (set by spread_manager.html
+# via `flyctl secrets set`).  Falls back to hardcoded defaults so the bot still
+# works without the secret during local dev / first deploy.
+#
+# Expected JSON shape (array of objects):
+#   [{"pair1":"EUR_USD","pair2":"GBP_USD","hedge_ratio":1.23,"entry_z":2.6,"exit_z":0.2}, ...]
+# ─────────────────────────────────────────────────────────────────────────────
+import json as _json
 
-# Spread definitions: (pair1, pair2, hedge_ratio)
-# hedge_ratio from cointegration analysis - negative means inverse relationship
-SPREADS = [
-    ('EUR_USD', 'USD_CHF'),   # Cointegrated (p=0.001), inverse correlation
+_DEFAULT_SPREADS_CONFIG = [
+    {"pair1": "EUR_USD", "pair2": "USD_CHF", "hedge_ratio": -1.1895, "entry_z": 2.0, "exit_z": 0.5},
 ]
 
-# Hedge ratios from cointegration analysis
-# Used for dollar-neutral sizing when not using dynamic calculation
-HEDGE_RATIOS = {
-    'EUR_USD/USD_CHF': -1.1895,  # Negative = inverse relationship
-}
+def _load_spreads_config() -> list[dict]:
+    raw = os.environ.get('SPREADS_CONFIG', '').strip()
+    if not raw:
+        print("[CONFIG] SPREADS_CONFIG not set — using hardcoded defaults")
+        return _DEFAULT_SPREADS_CONFIG
+    try:
+        cfg = _json.loads(raw)
+        if not isinstance(cfg, list) or not cfg:
+            raise ValueError("must be a non-empty JSON array")
+        # Validate required keys
+        for item in cfg:
+            for k in ('pair1', 'pair2', 'hedge_ratio'):
+                if k not in item:
+                    raise ValueError(f"missing key '{k}' in spread entry: {item}")
+        print(f"[CONFIG] Loaded {len(cfg)} spread(s) from SPREADS_CONFIG")
+        return cfg
+    except Exception as e:
+        print(f"[CONFIG] ERROR parsing SPREADS_CONFIG: {e} — falling back to defaults")
+        return _DEFAULT_SPREADS_CONFIG
+
+_SPREADS_CONFIG = _load_spreads_config()
+
+# Derived globals used throughout the bot
+SPREADS       = [(s['pair1'], s['pair2']) for s in _SPREADS_CONFIG]
+INSTRUMENTS   = list(dict.fromkeys(p for spread in SPREADS for p in spread))  # deduplicated, ordered
+HEDGE_RATIOS  = {f"{s['pair1']}/{s['pair2']}": s['hedge_ratio'] for s in _SPREADS_CONFIG}
+# Per-spread z-score overrides (fall back to the global env defaults if absent)
+_SPREAD_ENTRY_Z = {f"{s['pair1']}/{s['pair2']}": s.get('entry_z', ENTRY_Z_SCORE) for s in _SPREADS_CONFIG}
+_SPREAD_EXIT_Z  = {f"{s['pair1']}/{s['pair2']}": s.get('exit_z',  EXIT_Z_SCORE)  for s in _SPREADS_CONFIG}
 
 
 class TradingBot:
@@ -77,13 +106,14 @@ class TradingBot:
         self.spread_cointegrated = {f"{p1}/{p2}": True for p1, p2 in SPREADS}
         self.last_coint_check: datetime | None = None
         
-        # Set up spread analyzers
+        # Set up spread analyzers — use per-spread z-score overrides from SPREADS_CONFIG
         for pair1, pair2 in SPREADS:
+            spread_name = f"{pair1}/{pair2}"
             self.analyzer.add_spread(
                 pair1, pair2,
                 lookback=LOOKBACK_PERIODS,
-                entry_z=ENTRY_Z_SCORE,
-                exit_z=EXIT_Z_SCORE
+                entry_z=_SPREAD_ENTRY_Z.get(spread_name, ENTRY_Z_SCORE),
+                exit_z=_SPREAD_EXIT_Z.get(spread_name, EXIT_Z_SCORE),
             )
         
         print("[INIT] Bot initialized")
