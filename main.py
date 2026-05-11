@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import coint
+from statsmodels.regression.linear_model import OLS
+from statsmodels.tools import add_constant
 
 from oanda_client import OandaClient
 from pairs_analyzer import MultiPairAnalyzer, SpreadSignal
@@ -38,24 +40,22 @@ COINT_LOOKBACK_DAYS = int(os.environ.get('COINT_LOOKBACK_DAYS', '180'))
 ZSCORE_BLOWOUT = float(os.environ.get('ZSCORE_BLOWOUT', '3.5'))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Load spread config from SPREADS_CONFIG env var (set by spread_manager.html
-# via `flyctl secrets set`).  Falls back to hardcoded defaults so the bot still
-# works without the secret during local dev / first deploy.
-#
-# Expected JSON shape (array of objects):
-#   [{"pair1":"EUR_USD","pair2":"GBP_USD","hedge_ratio":1.23,"entry_z":2.6,"exit_z":0.2}, ...]
-# ─────────────────────────────────────────────────────────────────────────────
+# SPREADS_CONFIG -- candidate universe. Bot auto-promotes/demotes pairs
+# based on daily cointegration screening. No redeploy needed to switch pairs.
+# Set via: flyctl secrets set SPREADS_CONFIG='[{...}]' --app forex-spread-trading
+# JSON: [{"pair1":"EUR_USD","pair2":"GBP_USD","hedge_ratio":1.0}, ...]
 import json as _json
 
 _DEFAULT_SPREADS_CONFIG = [
-    {"pair1": "EUR_USD", "pair2": "USD_CHF", "hedge_ratio": -1.1895, "entry_z": 2.0, "exit_z": 0.5},
+    {"pair1": "EUR_USD", "pair2": "GBP_USD", "hedge_ratio": 1.0},
+    {"pair1": "AUD_USD", "pair2": "NZD_USD", "hedge_ratio": 1.0},
+    {"pair1": "EUR_USD", "pair2": "USD_CHF", "hedge_ratio": -1.1895},
 ]
 
 def _load_spreads_config() -> list[dict]:
     raw = os.environ.get('SPREADS_CONFIG', '').strip()
     if not raw:
-        print("[CONFIG] SPREADS_CONFIG not set — using hardcoded defaults")
+        print("[CONFIG] SPREADS_CONFIG not set -- using hardcoded defaults")
         return _DEFAULT_SPREADS_CONFIG
     try:
         cfg = _json.loads(raw)
@@ -65,21 +65,20 @@ def _load_spreads_config() -> list[dict]:
             for k in ('pair1', 'pair2', 'hedge_ratio'):
                 if k not in item:
                     raise ValueError(f"missing key '{k}' in spread entry: {item}")
-        print(f"[CONFIG] Loaded {len(cfg)} spread(s) from SPREADS_CONFIG")
+        print(f"[CONFIG] Loaded {len(cfg)} candidate spread(s) from SPREADS_CONFIG")
         return cfg
     except Exception as e:
-        print(f"[CONFIG] ERROR parsing SPREADS_CONFIG: {e} — falling back to defaults")
+        print(f"[CONFIG] ERROR parsing SPREADS_CONFIG: {e} -- falling back to defaults")
         return _DEFAULT_SPREADS_CONFIG
 
-_SPREADS_CONFIG = _load_spreads_config()
+_SPREADS_CONFIG  = _load_spreads_config()
+SPREADS          = [(s['pair1'], s['pair2']) for s in _SPREADS_CONFIG]
+INSTRUMENTS      = list(dict.fromkeys(p for pair in SPREADS for p in pair))
+HEDGE_RATIOS     = {f"{s['pair1']}/{s['pair2']}": s['hedge_ratio'] for s in _SPREADS_CONFIG}
 
-# Derived globals used throughout the bot
-SPREADS      = [(s['pair1'], s['pair2']) for s in _SPREADS_CONFIG]
-INSTRUMENTS  = list(dict.fromkeys(p for spread in SPREADS for p in spread))  # deduplicated, ordered
-HEDGE_RATIOS = {f"{s['pair1']}/{s['pair2']}": s['hedge_ratio'] for s in _SPREADS_CONFIG}
-# Per-spread z-score overrides (fall back to global env defaults if absent)
-_SPREAD_ENTRY_Z = {f"{s['pair1']}/{s['pair2']}": s.get('entry_z', ENTRY_Z_SCORE) for s in _SPREADS_CONFIG}
-_SPREAD_EXIT_Z  = {f"{s['pair1']}/{s['pair2']}": s.get('exit_z',  EXIT_Z_SCORE)  for s in _SPREADS_CONFIG}
+# Half-life thresholds for the runtime cointegration screen
+COINT_MIN_HALF_LIFE = float(os.environ.get('COINT_MIN_HALF_LIFE', '3'))
+COINT_MAX_HALF_LIFE = float(os.environ.get('COINT_MAX_HALF_LIFE', '40'))
 
 
 class TradingBot:
@@ -100,19 +99,31 @@ class TradingBot:
         # Key: spread name, Value: {'pair1_units': X, 'pair2_units': Y}
         self.open_positions = {}
 
-        # Cointegration health tracking
-        # Key: spread name, Value: True if currently considered cointegrated
-        self.spread_cointegrated = {f"{p1}/{p2}": True for p1, p2 in SPREADS}
+        # Cointegration health tracking.
+        # Starts False -- pairs must PASS the daily screen before entries are allowed.
+        # This means on first startup the bot will idle until the first 24h check runs
+        # and positively confirms the pair. Prevents trading stale config on boot.
+        self.spread_cointegrated = {f"{p1}/{p2}": False for p1, p2 in SPREADS}
         self.last_coint_check: datetime | None = None
-        
-        # Set up spread analyzers -- use per-spread z-score overrides from SPREADS_CONFIG
+
+        # Per-spread entry/exit z-scores -- updated by the daily screen as
+        # the Kalman hedge ratio and OU half-life change over time.
+        self.spread_entry_z: dict[str, float] = {}
+        self.spread_exit_z:  dict[str, float] = {}
+        for s in _SPREADS_CONFIG:
+            sname = f"{s['pair1']}/{s['pair2']}"
+            self.spread_entry_z[sname] = s.get('entry_z', ENTRY_Z_SCORE)
+            self.spread_exit_z[sname]  = s.get('exit_z',  EXIT_Z_SCORE)
+
+        # Set up spread analyzers with initial z-score values.
+        # The daily screen will update entry/exit thresholds in-place.
         for pair1, pair2 in SPREADS:
-            spread_name = f"{pair1}/{pair2}"
+            sname = f"{pair1}/{pair2}"
             self.analyzer.add_spread(
                 pair1, pair2,
                 lookback=LOOKBACK_PERIODS,
-                entry_z=_SPREAD_ENTRY_Z.get(spread_name, ENTRY_Z_SCORE),
-                exit_z=_SPREAD_EXIT_Z.get(spread_name, EXIT_Z_SCORE),
+                entry_z=self.spread_entry_z.get(sname, ENTRY_Z_SCORE),
+                exit_z=self.spread_exit_z.get(sname, EXIT_Z_SCORE),
             )
         
         print("[INIT] Bot initialized")
@@ -218,9 +229,8 @@ class TradingBot:
                 del position_map[pair1]
                 del position_map[pair2]
         
-        # Auto-close orphan positions -- instruments with no matching spread partner.
-        # These are naked/unhedged and the bot has no way to manage them.
-        # Catches single legs left behind by a spread config change or partial close.
+        # Auto-close orphan positions -- no matching spread partner.
+        # These are naked/unhedged leftovers from a config change or partial close.
         if position_map:
             print(f"[RECONCILE] WARNING: {len(position_map)} orphan position(s) -- auto-closing:")
             for inst, units in list(position_map.items()):
@@ -230,7 +240,7 @@ class TradingBot:
                     if result is not None:
                         print(f"[RECONCILE]   OK {inst} closed")
                     else:
-                        print(f"[RECONCILE]   FAILED {inst} close -- check OANDA manually")
+                        print(f"[RECONCILE]   FAILED {inst} -- check OANDA manually")
                 else:
                     print(f"[RECONCILE]   DRY RUN -- would close {inst}")
 
@@ -332,37 +342,27 @@ class TradingBot:
         now = datetime.utcnow().strftime('%H:%M')
         
         # =====================================================================
-        # SAFETY CHECK - Query OANDA before opening new positions.
-        # Prevents stacking if internal tracking fails.
-        #
-        # IMPORTANT: only block if the conflicting instrument belongs to a
-        # *currently tracked* spread that's already in self.open_positions.
-        # Blocking on any non-zero OANDA position would prevent entry whenever
-        # an orphan from a prior deploy happens to share an instrument name.
-        # Orphans are cleaned up by reconcile_positions() on startup; this check
-        # guards against runtime tracking failures only.
+        # SAFETY CHECK -- only block if the conflicting instrument belongs to a
+        # *tracked* spread already in self.open_positions. Orphan positions from
+        # a prior deploy are cleaned up by reconcile; they must not block new entries.
         # =====================================================================
         if signal.signal in ['LONG_SPREAD', 'SHORT_SPREAD'] and not DRY_RUN:
             oanda_positions = self.client.get_open_positions()
             if oanda_positions:
-                # Instruments already claimed by a tracked open spread position
                 tracked_instruments = set()
                 for sname, pos in self.open_positions.items():
                     p1, p2 = sname.split('/')
                     tracked_instruments.add(p1)
                     tracked_instruments.add(p2)
-
-                # Cross-check with what OANDA actually has open
-                oanda_open = {p['instrument'] for p in oanda_positions if p['net_units'] != 0}
+                oanda_open  = {p['instrument'] for p in oanda_positions if p['net_units'] != 0}
                 conflicting = oanda_open & tracked_instruments
-
                 if signal.pair1 in conflicting:
-                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair1} already held by a tracked spread")
-                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair1} held by a tracked spread")
+                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name}")
                     return False
                 if signal.pair2 in conflicting:
-                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair2} already held by a tracked spread")
-                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair2} held by a tracked spread")
+                    print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name}")
                     return False
         # =====================================================================
         
@@ -572,78 +572,149 @@ class TradingBot:
 
     def check_cointegration(self) -> None:
         """
-        Re-run the Engle-Granger cointegration test for all active spreads.
-        If a spread fails, force-close any open position and mark it disabled
-        so the bot won't re-enter until the next passing check.
+        Full cointegration screen -- runs every COINT_CHECK_INTERVAL_HOURS.
+        Uses the same methodology as cointegration_analyzer.py:
+          1. Kalman filter hedge ratio on the 180-day rolling window
+          2. Dynamic spread = pair1 - kalman_beta * pair2
+          3. Engle-Granger cointegration test on the dynamic spread
+          4. OU fit for kappa and half-life
 
-        Runs on COINT_CHECK_INTERVAL_HOURS cadence, not every poll.
+        A pair becomes entry-eligible when ALL pass:
+          - p_value < COINT_P_THRESHOLD
+          - kappa > 0
+          - COINT_MIN_HALF_LIFE <= half_life <= COINT_MAX_HALF_LIFE
+
+        When a pair transitions fail->pass, entries are enabled and
+        the analyzer's z-score thresholds are updated from the OU fit.
+        When it transitions pass->fail, any open position is force-closed.
         """
         now = datetime.utcnow()
 
-        # Throttle: only run every COINT_CHECK_INTERVAL_HOURS
         if self.last_coint_check is not None:
             hours_since = (now - self.last_coint_check).total_seconds() / 3600
             if hours_since < COINT_CHECK_INTERVAL_HOURS:
                 return
 
-        print(f"\n[COINT] Running cointegration check (lookback={COINT_LOOKBACK_DAYS} daily candles)...")
+        print(f"\n[COINT] Running full cointegration screen ({COINT_LOOKBACK_DAYS}-day window)...")
         self.last_coint_check = now
 
         for pair1, pair2 in SPREADS:
             spread_name = f"{pair1}/{pair2}"
+            was_eligible = self.spread_cointegrated.get(spread_name, False)
 
-            # Fetch daily candles for both legs
+            # --- fetch daily candles ---
             candles1 = self.client.get_candles(pair1, granularity='D', count=COINT_LOOKBACK_DAYS)
             candles2 = self.client.get_candles(pair2, granularity='D', count=COINT_LOOKBACK_DAYS)
-
             if not candles1 or not candles2:
-                print(f"[COINT] {spread_name}: failed to fetch candles, skipping check")
+                print(f"[COINT] {spread_name}: candle fetch failed, skipping")
                 continue
 
-            # Align by matching timestamps
+            # --- align on date ---
             closes1 = {c['time'][:10]: c['close'] for c in candles1}
             closes2 = {c['time'][:10]: c['close'] for c in candles2}
-            common_dates = sorted(set(closes1) & set(closes2))
-
-            if len(common_dates) < 60:
-                print(f"[COINT] {spread_name}: only {len(common_dates)} overlapping days, need 60+, skipping")
+            common  = sorted(set(closes1) & set(closes2))
+            if len(common) < 60:
+                print(f"[COINT] {spread_name}: only {len(common)} overlapping days, need 60+")
                 continue
 
-            s1 = pd.Series([closes1[d] for d in common_dates])
-            s2 = pd.Series([closes2[d] for d in common_dates])
+            s1 = pd.Series([closes1[d] for d in common], dtype=float)
+            s2 = pd.Series([closes2[d] for d in common], dtype=float)
 
-            _, p_value, _ = coint(s1, s2)
-            passed = p_value < COINT_P_THRESHOLD
-            was_cointegrated = self.spread_cointegrated.get(spread_name, True)
+            # --- Kalman hedge ratio (same as analyzer) ---
+            beta, P, R, Q = 0.0, 1.0, 0.001, 0.01
+            betas = []
+            for yt, xt in zip(s1, s2):
+                P_pred = P + Q
+                if xt == 0:
+                    betas.append(beta); continue
+                e = yt - beta * xt
+                S = xt * xt * P_pred + R
+                K = P_pred * xt / S
+                beta = beta + K * e
+                P    = (1 - K * xt) * P_pred
+                betas.append(beta)
+            kalman_betas = pd.Series(betas, dtype=float)
+            kalman_latest = kalman_betas.iloc[-1]
 
-            print(f"[COINT] {spread_name}: p={p_value:.4f} ({'PASS' if passed else 'FAIL'}, threshold={COINT_P_THRESHOLD})")
+            # --- dynamic spread ---
+            spread = s1.values - kalman_betas.values * s2.values
+            spread = pd.Series(spread, dtype=float).dropna()
 
-            self.spread_cointegrated[spread_name] = passed
+            # --- cointegration test on aligned raw series ---
+            try:
+                _, p_value, _ = coint(s1, s2)
+            except Exception as exc:
+                print(f"[COINT] {spread_name}: coint() error: {exc}")
+                continue
 
-            # If it just failed and we're in a position, close it
-            if not passed and was_cointegrated:
-                print(f"[COINT] {spread_name}: cointegration LOST — forcing position close")
+            # --- OU fit for kappa + half-life ---
+            kappa, half_life = float('nan'), float('inf')
+            if len(spread) >= 20:
+                x_ou = spread.shift(1).dropna()
+                y_ou = spread.iloc[1:]
+                try:
+                    model = OLS(y_ou.values, add_constant(x_ou.values)).fit()
+                    a_ou, b_ou = model.params[0], model.params[1]
+                    if 0 < b_ou < 1:
+                        kappa     = -np.log(b_ou)
+                        half_life =  np.log(2) / kappa
+                except Exception as exc:
+                    print(f"[COINT] {spread_name}: OU fit error: {exc}")
+
+            # --- gate: all three criteria must pass ---
+            p_ok  = p_value   < COINT_P_THRESHOLD
+            k_ok  = np.isfinite(kappa) and kappa > 0
+            hl_ok = np.isfinite(half_life) and COINT_MIN_HALF_LIFE <= half_life <= COINT_MAX_HALF_LIFE
+            now_eligible = p_ok and k_ok and hl_ok
+
+            hl_str = f"{half_life:.1f}d" if np.isfinite(half_life) else "inf"
+            k_str  = f"{kappa:.4f}"      if np.isfinite(kappa)     else "nan"
+            status = "PASS" if now_eligible else "FAIL"
+            reasons = []
+            if not p_ok:  reasons.append(f"p={p_value:.4f}>={COINT_P_THRESHOLD}")
+            if not k_ok:  reasons.append(f"kappa={k_str}<=0")
+            if not hl_ok: reasons.append(f"HL={hl_str} outside [{COINT_MIN_HALF_LIFE},{COINT_MAX_HALF_LIFE}]d")
+            reason_str = ", ".join(reasons) if reasons else "all criteria met"
+            print(f"[COINT] {spread_name}: {status} | p={p_value:.4f} kappa={k_str} HL={hl_str} hedge={kalman_latest:.4f} | {reason_str}")
+
+            self.spread_cointegrated[spread_name] = now_eligible
+
+            # --- transition: fail -> pass ---
+            if now_eligible and not was_eligible:
+                print(f"[COINT] {spread_name}: NOW ELIGIBLE -- updating z-score thresholds")
+                # Derive entry_z from half-life using the same heuristic as the analyzer
+                if   half_life < 5:  entry_z = ENTRY_Z_SCORE + 0.3
+                elif half_life <= 15: entry_z = ENTRY_Z_SCORE
+                elif half_life <= 40: entry_z = ENTRY_Z_SCORE + 0.2
+                else:                 entry_z = ENTRY_Z_SCORE + 0.4
+                exit_z = EXIT_Z_SCORE
+                self.spread_entry_z[spread_name] = entry_z
+                self.spread_exit_z[spread_name]  = exit_z
+                # Update the live analyzer so it uses the new thresholds immediately
+                for a in self.analyzer.analyzers.values():
+                    if a.name == spread_name:
+                        a.entry_z = entry_z
+                        a.exit_z  = exit_z
+                        print(f"[COINT] {spread_name}: entry_z={entry_z:.2f} exit_z={exit_z:.2f} (HL={hl_str})")
+                # Also refresh the hedge ratio in HEDGE_RATIOS so sizing is current
+                HEDGE_RATIOS[spread_name] = kalman_latest
+
+            # --- transition: pass -> fail ---
+            elif not now_eligible and was_eligible:
+                print(f"[COINT] {spread_name}: NO LONGER ELIGIBLE -- disabling entries")
                 if spread_name in self.open_positions:
-                    # Build a minimal signal to drive the existing close path
+                    print(f"[COINT] {spread_name}: open position detected -- force closing")
                     prices = self.get_current_prices()
                     fake_signal = SpreadSignal(
-                        pair1=pair1,
-                        pair2=pair2,
-                        ratio=0,
-                        z_score=0,
-                        mean=0,
-                        std=0,
-                        signal='CLOSE',
-                        timestamp=now,
+                        pair1=pair1, pair2=pair2,
+                        ratio=0, z_score=0, mean=0, std=0,
+                        signal='CLOSE', timestamp=now,
                     )
                     self.execute_spread_trade(fake_signal, prices)
-                else:
-                    print(f"[COINT] {spread_name}: no open position, just disabling future entries")
 
-            elif passed and not was_cointegrated:
-                print(f"[COINT] {spread_name}: cointegration RESTORED — re-enabling entries")
-
-        print(f"[COINT] Check complete\n")
+        eligible = [k for k, v in self.spread_cointegrated.items() if v]
+        ineligible = [k for k, v in self.spread_cointegrated.items() if not v]
+        print(f"[COINT] Screen complete | eligible: {eligible or 'none'} | idle: {ineligible or 'none'}\n")
 
     def run_once(self) -> None:
         """Run a single iteration of the bot logic"""

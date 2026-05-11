@@ -385,7 +385,7 @@ function renderDeployTab() {
   }
 
   html += '<div class="section"><div class="section-label">Step 1 — set spreads config secret</div>'
-        + '<div class="notice">Run this in your terminal. Sets <code>SPREADS_CONFIG</code> as a Fly secret and triggers an automatic redeploy. No code edits needed.</div>'
+        + '<div class="notice">Sets the <code>SPREADS_CONFIG</code> candidate universe. The bot monitors ALL selected pairs and auto-promotes/demotes them based on daily cointegration screening (p-value, kappa &gt; 0, half-life 3&ndash;40d). No redeploy needed to switch active pairs.</div>'
         + '<div class="cmd-box" id="flyCmd">' + escHtml(flyCmd) + '</div>'
         + '<div class="copy-row"><button class="btn primary" onclick="copyText(\'flyCmd\', \'flyCopied\')">Copy command</button><span class="copy-feedback" id="flyCopied">Copied!</span></div>'
         + '</div>';
