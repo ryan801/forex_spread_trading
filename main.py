@@ -61,7 +61,6 @@ def _load_spreads_config() -> list[dict]:
         cfg = _json.loads(raw)
         if not isinstance(cfg, list) or not cfg:
             raise ValueError("must be a non-empty JSON array")
-        # Validate required keys
         for item in cfg:
             for k in ('pair1', 'pair2', 'hedge_ratio'):
                 if k not in item:
@@ -75,10 +74,10 @@ def _load_spreads_config() -> list[dict]:
 _SPREADS_CONFIG = _load_spreads_config()
 
 # Derived globals used throughout the bot
-SPREADS       = [(s['pair1'], s['pair2']) for s in _SPREADS_CONFIG]
-INSTRUMENTS   = list(dict.fromkeys(p for spread in SPREADS for p in spread))  # deduplicated, ordered
-HEDGE_RATIOS  = {f"{s['pair1']}/{s['pair2']}": s['hedge_ratio'] for s in _SPREADS_CONFIG}
-# Per-spread z-score overrides (fall back to the global env defaults if absent)
+SPREADS      = [(s['pair1'], s['pair2']) for s in _SPREADS_CONFIG]
+INSTRUMENTS  = list(dict.fromkeys(p for spread in SPREADS for p in spread))  # deduplicated, ordered
+HEDGE_RATIOS = {f"{s['pair1']}/{s['pair2']}": s['hedge_ratio'] for s in _SPREADS_CONFIG}
+# Per-spread z-score overrides (fall back to global env defaults if absent)
 _SPREAD_ENTRY_Z = {f"{s['pair1']}/{s['pair2']}": s.get('entry_z', ENTRY_Z_SCORE) for s in _SPREADS_CONFIG}
 _SPREAD_EXIT_Z  = {f"{s['pair1']}/{s['pair2']}": s.get('exit_z',  EXIT_Z_SCORE)  for s in _SPREADS_CONFIG}
 
@@ -106,7 +105,7 @@ class TradingBot:
         self.spread_cointegrated = {f"{p1}/{p2}": True for p1, p2 in SPREADS}
         self.last_coint_check: datetime | None = None
         
-        # Set up spread analyzers — use per-spread z-score overrides from SPREADS_CONFIG
+        # Set up spread analyzers -- use per-spread z-score overrides from SPREADS_CONFIG
         for pair1, pair2 in SPREADS:
             spread_name = f"{pair1}/{pair2}"
             self.analyzer.add_spread(
@@ -219,12 +218,22 @@ class TradingBot:
                 del position_map[pair1]
                 del position_map[pair2]
         
-        # Warn about any positions that don't match our spreads
+        # Auto-close orphan positions -- instruments with no matching spread partner.
+        # These are naked/unhedged and the bot has no way to manage them.
+        # Catches single legs left behind by a spread config change or partial close.
         if position_map:
-            print(f"[RECONCILE] âš  Unmatched positions (not part of tracked spreads):")
-            for inst, units in position_map.items():
-                print(f"[RECONCILE]   {inst}: {units:+.0f} units - consider closing manually")
-        
+            print(f"[RECONCILE] WARNING: {len(position_map)} orphan position(s) -- auto-closing:")
+            for inst, units in list(position_map.items()):
+                print(f"[RECONCILE]   Closing orphan {inst}: {units:+.0f} units")
+                if not DRY_RUN:
+                    result = self.client.close_position(inst)
+                    if result is not None:
+                        print(f"[RECONCILE]   OK {inst} closed")
+                    else:
+                        print(f"[RECONCILE]   FAILED {inst} close -- check OANDA manually")
+                else:
+                    print(f"[RECONCILE]   DRY RUN -- would close {inst}")
+
         print(f"[RECONCILE] Complete. Recovered {reconciled} spread position(s)\n")
         return reconciled
     # =========================================================================
@@ -323,25 +332,36 @@ class TradingBot:
         now = datetime.utcnow().strftime('%H:%M')
         
         # =====================================================================
-        # SAFETY CHECK - Query OANDA before opening new positions
-        # This prevents stacking even if internal tracking fails
+        # SAFETY CHECK - Query OANDA before opening new positions.
+        # Prevents stacking if internal tracking fails.
+        #
+        # IMPORTANT: only block if the conflicting instrument belongs to a
+        # *currently tracked* spread that's already in self.open_positions.
+        # Blocking on any non-zero OANDA position would prevent entry whenever
+        # an orphan from a prior deploy happens to share an instrument name.
+        # Orphans are cleaned up by reconcile_positions() on startup; this check
+        # guards against runtime tracking failures only.
         # =====================================================================
         if signal.signal in ['LONG_SPREAD', 'SHORT_SPREAD'] and not DRY_RUN:
             oanda_positions = self.client.get_open_positions()
             if oanda_positions:
-                # Build set of instruments with existing exposure
-                instruments_with_positions = set()
-                for pos in oanda_positions:
-                    if pos['net_units'] != 0:
-                        instruments_with_positions.add(pos['instrument'])
-                
-                # Check if either leg of this spread already has exposure
-                if signal.pair1 in instruments_with_positions:
-                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair1} already has open position at OANDA")
+                # Instruments already claimed by a tracked open spread position
+                tracked_instruments = set()
+                for sname, pos in self.open_positions.items():
+                    p1, p2 = sname.split('/')
+                    tracked_instruments.add(p1)
+                    tracked_instruments.add(p2)
+
+                # Cross-check with what OANDA actually has open
+                oanda_open = {p['instrument'] for p in oanda_positions if p['net_units'] != 0}
+                conflicting = oanda_open & tracked_instruments
+
+                if signal.pair1 in conflicting:
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair1} already held by a tracked spread")
                     print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
                     return False
-                if signal.pair2 in instruments_with_positions:
-                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair2} already has open position at OANDA")
+                if signal.pair2 in conflicting:
+                    print(f"\n[TRADE {now}] BLOCKED: {signal.pair2} already held by a tracked spread")
                     print(f"[TRADE {now}] Skipping {signal.signal} on {spread_name} to prevent stacking")
                     return False
         # =====================================================================
