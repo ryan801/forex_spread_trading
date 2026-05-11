@@ -38,7 +38,6 @@ from oanda_client import OandaClient
 SPREADS_TO_TEST = [
     ('EUR_USD', 'GBP_USD'),   # European majors
     ('AUD_USD', 'NZD_USD'),   # Oceania twins
-    ('USD_CAD', 'USD_NOK'),   # Oil exporters
     ('EUR_JPY', 'GBP_JPY'),   # European vs safe haven
     ('AUD_JPY', 'NZD_JPY'),   # Oceania vs safe haven (alternative)
     ('USD_CHF', 'USD_JPY'),   # Safe havens

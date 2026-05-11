@@ -50,6 +50,8 @@ _DEFAULT_SPREADS_CONFIG = [
     {"pair1": "EUR_USD", "pair2": "GBP_USD", "hedge_ratio": 1.0},
     {"pair1": "AUD_USD", "pair2": "NZD_USD", "hedge_ratio": 1.0},
     {"pair1": "EUR_USD", "pair2": "USD_CHF", "hedge_ratio": -1.1895},
+    {"pair1": "EUR_JPY", "pair2": "GBP_JPY", "hedge_ratio": 1.0},
+    {"pair1": "AUD_JPY", "pair2": "NZD_JPY", "hedge_ratio": 1.0}
 ]
 
 def _load_spreads_config() -> list[dict]:
